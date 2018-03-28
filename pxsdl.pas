@@ -25,6 +25,8 @@ type
 
   { TSDLApp }
 
+  { TpxSdl }
+
   TpxSdl = class
     private
       fStarted :boolean;
@@ -61,15 +63,17 @@ type
     public //drawing
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );
       procedure drawRect( x, y, w, h :SInt32 );
-    public //new, load, create
+    public //load
       function loadTexture( filename: string  ):PSDL_Texture;overload;
       function loadTexture( filename: string; out w,h:LongInt ):PSDL_Texture;overload;
     public
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
       constructor create;
       destructor destroy;override;
-      procedure start;
-      procedure fatalError;
+      procedure finalizeAll;
+      procedure {***} Start; {***}
+      procedure errorFatal;
+      procedure debug( s:string );
       property window:PSDL_Window read fWindow;
       property pixelWidth:LongInt read fPixelWidth;
       property pixelHeight:LongInt read fPixelHeight;
@@ -161,6 +165,7 @@ begin
   fDemoY := fDemoY + fDemoIncY;
   if fDemoX < 0 then fDemoIncX := 1 else if fDemoX > fPixelWidth-100 then fDemoIncX := -1;
   if fDemoY < 0 then fDemoIncY := 1 else if fDemoY > fPixelHeight-100 then fDemoIncY := -1;
+  SDL_Delay(5);
 end;
 
 constructor TpxSdl.create;
@@ -182,6 +187,11 @@ begin
 end;
 
 destructor TpxSdl.destroy;
+begin
+  finalizeAll;
+end;
+
+procedure TpxSdl.finalizeAll;
 var
   i:integer;
 begin
@@ -195,24 +205,24 @@ begin
   SDL_Quit;
 end;
 
-procedure TpxSdl.start;
+procedure TpxSdl.Start;
 var
   winflags :UInt32;
 begin
   //initializaitons
   fStarted := true;
-  if SDL_Init(cfg.subsystems) < 0 then
+  if SDL_Init(23452345) < 0 then
   begin
-    fatalError;
+    errorFatal;
     exit;
   end else
   begin
     winflags := 0;
     fWinTitle := 'SDL App';
     fWindow := SDL_CreateWindow(PChar(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, winflags );
-    if fWindow = nil then begin fatalError; exit; end;
+    if fWindow = nil then errorFatal;
     fRend := SDL_CreateRenderer(fWindow, -1, 0);
-    if fRend = nil then begin fatalError; exit; end;
+    if fRend = nil then errorFatal;
     updateRenderSize;
   end;
   //Load
@@ -221,9 +231,17 @@ begin
   fMainLoop;
 end;
 
-procedure TpxSdl.fatalError;
+procedure TpxSdl.errorFatal;
 begin
-  writeln('Fail.')
+  finalizeAll;
+  debug('ERROR: '+ string(SDL_GetError) );
+  SDL_Delay(3000);
+  HALT;
+end;
+
+procedure TpxSdl.debug(s: string);
+begin
+  writeln(s);
 end;
 
 procedure TpxSdl.SetMainLoop(aMainLoop: TProc);
