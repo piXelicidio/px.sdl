@@ -1,4 +1,4 @@
-unit pxSdl;
+unit px.sdl;
 
 {$mode objfpc}{$H+}
 
@@ -23,11 +23,10 @@ type
   TUpdateProc = procedure( dt : single ) of object;
 //  TOnKeyDownProc = procedure() of object;
 
-  { TSDLApp }
 
-  { TpxSdl }
+  { Tsdl }
 
-  TpxSdl = class
+  Tsdl = class
     private
       fStarted :boolean;
 
@@ -85,15 +84,15 @@ type
   end;
 
 var
-  sdl :TpxSdl;
+  sdl :Tsdl;
 
 implementation
 
 
 
-{ TpxSdl }
+{ Tsdl }
 
-procedure TpxSdl.appMainLoop;
+procedure Tsdl.appMainLoop;
 var
   exitLoop :boolean = false;
   lastTick    :Uint32;
@@ -144,7 +143,7 @@ begin
   end
 end;
 
-procedure TpxSdl.defaultDraw;
+procedure Tsdl.defaultDraw;
 
 begin
   setColor(0,0,0);
@@ -153,13 +152,13 @@ begin
   drawRect(fDemoX, fDemoY, 100, 100);
 end;
 
-procedure TpxSdl.defaultLoad;
+procedure Tsdl.defaultLoad;
 begin
   fDemoX := 0; fDemoY:=0;
   fDemoIncX := 1; fDemoIncY := 1;
 end;
 
-procedure TpxSdl.defaultUpdate;
+procedure Tsdl.defaultUpdate;
 begin
   fDemoX := fDemoX + fDemoIncX;
   fDemoY := fDemoY + fDemoIncY;
@@ -168,7 +167,7 @@ begin
   SDL_Delay(5);
 end;
 
-constructor TpxSdl.create;
+constructor Tsdl.create;
 begin
   with cfg do
   begin
@@ -186,12 +185,12 @@ begin
   fTextures := TTextureList.Create;
 end;
 
-destructor TpxSdl.destroy;
+destructor Tsdl.destroy;
 begin
   finalizeAll;
 end;
 
-procedure TpxSdl.finalizeAll;
+procedure Tsdl.finalizeAll;
 var
   i:integer;
 begin
@@ -205,7 +204,7 @@ begin
   SDL_Quit;
 end;
 
-procedure TpxSdl.Start;
+procedure Tsdl.Start;
 var
   winflags :UInt32;
 begin
@@ -231,7 +230,7 @@ begin
   fMainLoop;
 end;
 
-procedure TpxSdl.errorFatal;
+procedure Tsdl.errorFatal;
 begin
   finalizeAll;
   debug('ERROR: '+ string(SDL_GetError) );
@@ -239,43 +238,43 @@ begin
   HALT;
 end;
 
-procedure TpxSdl.debug(s: string);
+procedure Tsdl.debug(s: string);
 begin
   writeln(s);
 end;
 
-procedure TpxSdl.SetMainLoop(aMainLoop: TProc);
+procedure Tsdl.SetMainLoop(aMainLoop: TProc);
 begin
   if aMainLoop <> nil then fMainLoop := aMainLoop;
 end;
 
-procedure TpxSdl.SetOnDraw(AValue: TProc);
+procedure Tsdl.SetOnDraw(AValue: TProc);
 begin
   if AValue<>nil then fOnDraw:=AValue;
 end;
 
-procedure TpxSdl.SetonLoad(AValue: TProc);
+procedure Tsdl.SetonLoad(AValue: TProc);
 begin
   if AValue<>nil then fOnLoad:=AValue;
 end;
 
-procedure TpxSdl.SetonUpdate(AValue: TProc);
+procedure Tsdl.SetonUpdate(AValue: TProc);
 begin
   if AValue<>nil then FonUpdate:=AValue;
 end;
 
-procedure TpxSdl.updateRenderSize;
+procedure Tsdl.updateRenderSize;
 begin
   SDL_GetRendererOutputSize(fRend, @fPixelWidth, @fPixelHeight);
 end;
 
-procedure TpxSdl.setColor(r, g, b: UInt8; a: UInt8);
+procedure Tsdl.setColor(r, g, b: UInt8; a: UInt8);
 begin
   SDL_SetRenderDrawColor(fRend, r, g, b, a);
 end;
 
 
-procedure TpxSdl.drawRect(x, y, w, h: SInt32 );
+procedure Tsdl.drawRect(x, y, w, h: SInt32 );
 begin
   fTempRect.x := x;
   fTempRect.y := y;
@@ -284,7 +283,7 @@ begin
   SDL_RenderDrawRect(fRend, @fTempRect);
 end;
 
-function TpxSdl.loadTexture(filename: string): PSDL_Texture;
+function Tsdl.loadTexture(filename: string): PSDL_Texture;
 begin
   Result := IMG_LoadTexture(fRend, PChar(filename));
   if Result<>nil then
@@ -293,7 +292,7 @@ begin
   end;
 end;
 
-function TpxSdl.loadTexture(filename: string; out w, h: LongInt): PSDL_Texture;
+function Tsdl.loadTexture(filename: string; out w, h: LongInt): PSDL_Texture;
 begin
   Result := IMG_LoadTexture(fRend, PChar(filename));
   if Result<>nil then
@@ -305,7 +304,7 @@ end;
 
 
 initialization
-  sdl := TpxSdl.create;
+  sdl := Tsdl.create;
 finalization
   sdl.free;
 end.
