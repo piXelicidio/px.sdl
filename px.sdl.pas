@@ -1,11 +1,9 @@
 unit px.sdl;
 
-{$mode objfpc}{$H+}
-
 interface
 
 uses
-  sdl2, sdl2_image, sysutils, fgl;
+  sdl2, sdl2_image, sysutils, generics.collections;
 
 type
 
@@ -17,16 +15,24 @@ type
     subsystems : UInt32; //  SDL_INIT_... flags
   end;
 
-  TTextureList = specialize TFPGList<PSDL_Texture>;
+
+  TTextureList = TList<PSDL_Texture>;
+
 
   TProc = procedure of object;
   TUpdateProc = procedure( dt : single ) of object;
 //  TOnKeyDownProc = procedure() of object;
 
 
-  { Tsdl }
+
+
+type
+
 
   Tsdl = class
+    public
+      constructor create;
+      destructor Destroy;override;
     private
       fStarted :boolean;
 
@@ -67,11 +73,10 @@ type
       function loadTexture( filename: string; out w,h:LongInt ):PSDL_Texture;overload;
     public
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
-      constructor create;
-      destructor destroy;override;
       procedure finalizeAll;
-      procedure {***} Start; {***}
+      procedure Start;
       procedure errorFatal;
+      procedure errorMsg( s:string );
       procedure debug( s:string );
       property window:PSDL_Window read fWindow;
       property pixelWidth:LongInt read fPixelWidth;
@@ -94,12 +99,13 @@ implementation
 
 procedure Tsdl.appMainLoop;
 var
-  exitLoop :boolean = false;
+  exitLoop :boolean;
   lastTick    :Uint32;
   frameStep   :Uint32;
   currTick    :UInt32;
   titleFPS  :string;
 begin
+  exitLoop := false;
   lastTick := SDL_GetTicks;
   fFrameCounter := 0;
   frameStep     := 0;
@@ -137,7 +143,7 @@ begin
       fAveFPS := (1000 * 30) div (currTick - lastTick) ;
       lastTick := currTick;
       titleFPS := fWinTitle +  ' FPS: ' + IntToStr(fAveFPS);
-      if fTitleFPS then SDL_SetWindowTitle( fWindow, PChar(titleFPS)  );
+      if fTitleFPS then SDL_SetWindowTitle( fWindow, PAnsiChar(AnsiString(titleFPS))  );
     end;
     //SDL_Delay(1);
   end
@@ -177,10 +183,10 @@ begin
   end;
   fTitleFPS := true;
   fFrameCounter := 0;
-  mainLoop:=@appMainLoop;
-  onLoad := @defaultLoad;
-  onDraw := @defaultDraw;
-  onUpdate := @defaultUpdate;
+  mainLoop:=appMainLoop;
+  onLoad := defaultLoad;
+  onDraw := defaultDraw;
+  onUpdate := defaultUpdate;
 
   fTextures := TTextureList.Create;
 end;
@@ -207,10 +213,11 @@ end;
 procedure Tsdl.Start;
 var
   winflags :UInt32;
+  rendInfo :TSDL_RendererInfo;
 begin
   //initializaitons
   fStarted := true;
-  if SDL_Init(23452345) < 0 then
+  if SDL_Init(cfg.subsystems) < 0 then
   begin
     errorFatal;
     exit;
@@ -218,10 +225,12 @@ begin
   begin
     winflags := 0;
     fWinTitle := 'SDL App';
-    fWindow := SDL_CreateWindow(PChar(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, winflags );
+    fWindow := SDL_CreateWindow(PAnsichar(AnsiString(fWinTitle)), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, winflags );
     if fWindow = nil then errorFatal;
-    fRend := SDL_CreateRenderer(fWindow, -1, 0);
+    fRend := SDL_CreateRenderer(fWindow,-1, 0);
     if fRend = nil then errorFatal;
+    SDL_GetRendererInfo(fRend,@rendInfo);
+    Debug('Renderer: '+ string(rendInfo.name));
     updateRenderSize;
   end;
   //Load
@@ -234,8 +243,13 @@ procedure Tsdl.errorFatal;
 begin
   finalizeAll;
   debug('ERROR: '+ string(SDL_GetError) );
-  SDL_Delay(3000);
-  HALT;
+  SDL_Delay(2000);
+  Halt;
+end;
+
+procedure Tsdl.errorMsg(s:string);
+begin
+  writeln('Error: '+ s);
 end;
 
 procedure Tsdl.debug(s: string);
@@ -245,22 +259,22 @@ end;
 
 procedure Tsdl.SetMainLoop(aMainLoop: TProc);
 begin
-  if aMainLoop <> nil then fMainLoop := aMainLoop;
+  if Assigned(aMainLoop) then fMainLoop := aMainLoop;
 end;
 
 procedure Tsdl.SetOnDraw(AValue: TProc);
 begin
-  if AValue<>nil then fOnDraw:=AValue;
+  if Assigned(AValue) then fOnDraw:=AValue;
 end;
 
 procedure Tsdl.SetonLoad(AValue: TProc);
 begin
-  if AValue<>nil then fOnLoad:=AValue;
+  if Assigned(AValue) then fOnLoad:=AValue;
 end;
 
 procedure Tsdl.SetonUpdate(AValue: TProc);
 begin
-  if AValue<>nil then FonUpdate:=AValue;
+  if Assigned(AValue) then FonUpdate:=AValue;
 end;
 
 procedure Tsdl.updateRenderSize;
@@ -285,22 +299,24 @@ end;
 
 function Tsdl.loadTexture(filename: string): PSDL_Texture;
 begin
-  Result := IMG_LoadTexture(fRend, PChar(filename));
+  //TODO: Check if the texture is already loaded, reuse pointer.
+  Result := IMG_LoadTexture(fRend, PAnsiChar(AnsiString(filename)));
   if Result<>nil then
   begin
     fTextures.add(Result);
-  end;
+  end else errorMsg('Problem loading texture: '+filename);
 end;
 
 function Tsdl.loadTexture(filename: string; out w, h: LongInt): PSDL_Texture;
 begin
-  Result := IMG_LoadTexture(fRend, PChar(filename));
+  Result := loadTexture(filename); //IMG_LoadTexture(fRend, PAnsiChar(AnsiString(filename)) );
   if Result<>nil then
   begin
     fTextures.add(Result);
     SDL_QueryTexture(Result, nil, nil, @w, @h);
   end;
 end;
+
 
 
 initialization
