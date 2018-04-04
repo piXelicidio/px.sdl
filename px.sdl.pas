@@ -15,7 +15,7 @@ type
     subsystems : UInt32; //  SDL_INIT_... flags
   end;
 
-
+  //TODO: textures in StringList? and check to no reload same texturet twice?
   TTextureList = TList<PSDL_Texture>;
 
 
@@ -35,6 +35,8 @@ type
       destructor Destroy;override;
     private
       fStarted :boolean;
+      fAppExeName :string;
+      fBasePath :string;
 
       fWindow :PSDL_Window;
       fWinTitle :string;
@@ -66,15 +68,15 @@ type
       procedure SetonUpdate(AValue: TProc);
       procedure updateRenderSize;
     public //drawing
-      procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );
-      procedure drawRect( x, y, w, h :SInt32 );
+      procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );inline;
+      procedure drawRect( x, y, w, h :SInt32 );inline;
     public //load
       function loadTexture( filename: string  ):PSDL_Texture;overload;
       function loadTexture( filename: string; out w,h:LongInt ):PSDL_Texture;overload;
     public
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
+      procedure Start;  {***}
       procedure finalizeAll;
-      procedure Start;
       procedure errorFatal;
       procedure errorMsg( s:string );
       procedure debug( s:string );
@@ -170,7 +172,7 @@ begin
   fDemoY := fDemoY + fDemoIncY;
   if fDemoX < 0 then fDemoIncX := 1 else if fDemoX > fPixelWidth-100 then fDemoIncX := -1;
   if fDemoY < 0 then fDemoIncY := 1 else if fDemoY > fPixelHeight-100 then fDemoIncY := -1;
-  SDL_Delay(5);
+  SDL_Delay(1);
 end;
 
 constructor Tsdl.create;
@@ -217,6 +219,8 @@ var
 begin
   //initializaitons
   fStarted := true;
+  fAppExeName := ParamStr(0);
+  fBasePath := ExtractFilePath(fAppExeName);
   if SDL_Init(cfg.subsystems) < 0 then
   begin
     errorFatal;
@@ -300,11 +304,11 @@ end;
 function Tsdl.loadTexture(filename: string): PSDL_Texture;
 begin
   //TODO: Check if the texture is already loaded, reuse pointer.
-  Result := IMG_LoadTexture(fRend, PAnsiChar(AnsiString(filename)));
+  Result := IMG_LoadTexture(fRend, PAnsiChar(AnsiString( fBasePath + filename )));
   if Result<>nil then
   begin
     fTextures.add(Result);
-  end else errorMsg('Problem loading texture: '+filename);
+  end else errorMsg('Problem loading texture: '+ fBasePath + filename);
 end;
 
 function Tsdl.loadTexture(filename: string; out w, h: LongInt): PSDL_Texture;
