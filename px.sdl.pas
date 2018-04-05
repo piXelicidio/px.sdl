@@ -21,10 +21,10 @@ type
   //TODO: textures in StringList? and check to no reload same texturet twice?
   TTextureList = TList<PSDL_Texture>;
 
-
-  TProc = procedure of object;
-  TUpdateProc = procedure( dt : single ) of object;
-//  TOnKeyDownProc = procedure() of object;
+   // using reference to procedure callbacks can be annonymos functions,
+   // regular procedures or procedure of object, as I unduerstand :)_
+  TProc = reference to procedure;
+  //  TProc = procedure of object;
 
 
 
