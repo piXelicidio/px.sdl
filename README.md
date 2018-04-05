@@ -1,7 +1,7 @@
 # px.sdl
 
 *px.sdl.pas* is a single Delphi unit to help with a quick **start** of Delphi+SDL 2.0 projects. Once it's up you keep full control, but
-shouldn't be too late to see if it works or not, so this is the minimal example program:
+with some help if needed and shouldn't be too late to see if it works or not, so this is the minimal example program:
 
     program minimal;
     {$APPTYPE CONSOLE}
@@ -14,7 +14,7 @@ shouldn't be too late to see if it works or not, so this is the minimal example 
 
 ![Animated gif minimal demo](https://github.com/piXelicidio/px.sdl/blob/master/examples/minimal_SDL2delphi.gif)
 
-With *sdl.start* we have a default SDL app with: A window, renderer, default loop, update, FPS calc, and andimated bouncing box.
+With *sdl.start* we have a default SDL app with: A window, renderer, default loop, update, FPS calc, and animated bouncing box.
 
 ## prerequisits
 
@@ -30,3 +30,5 @@ With *sdl.start* we have a default SDL app with: A window, renderer, default loo
     libfreetype-6.dll
     libpng16-16.dll
 
+## tested on:
+- Delphi XE3 - Windows 7 
