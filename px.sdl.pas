@@ -35,7 +35,6 @@ type
       destructor Destroy;override;
     private
       fStarted :boolean;
-      fAppExeName :string;
       fBasePath :string;
 
       fWindow :PSDL_Window;
@@ -219,8 +218,10 @@ var
 begin
   //initializaitons
   fStarted := true;
-  fAppExeName := ParamStr(0);
-  fBasePath := ExtractFilePath(fAppExeName);
+  //fAppExeName := ParamStr(0);
+  //fBasePath := ExtractFilePath(fAppExeName);
+  fBasePath := string(PAnsiChar(SDL_GetBasePath));
+
   if SDL_Init(cfg.subsystems) < 0 then
   begin
     errorFatal;
