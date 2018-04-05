@@ -11,8 +11,11 @@ type
     window : record
       w  :SInt32 ;
       h  :SInt32 ;
+      flags :UInt32;
     end;
     subsystems : UInt32; //  SDL_INIT_... flags
+    RenderDriverIndex :SInt32;
+    RenderFlags :UInt32;
   end;
 
   //TODO: textures in StringList? and check to no reload same texturet twice?
@@ -36,6 +39,7 @@ type
     private
       fStarted :boolean;
       fBasePath :string;
+      fPrefPath :string;
 
       fWindow :PSDL_Window;
       fWinTitle :string;
@@ -51,6 +55,7 @@ type
       fOnDraw :TProc;
       fOnLoad :TProc;
       fOnUpdate :TProc;
+      fOnFinalize: TProc;
       fEvent  :TSDL_Event;
 
       fTempRect :TSDL_Rect;
@@ -66,6 +71,7 @@ type
       procedure SetonLoad(AValue: TProc);
       procedure SetonUpdate(AValue: TProc);
       procedure updateRenderSize;
+      procedure SetonFinalize(const Value: TProc);
     public //drawing
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );inline;
       procedure drawRect( x, y, w, h :SInt32 );inline;
@@ -87,13 +93,21 @@ type
       property onLoad:TProc read fOnLoad write SetonLoad;
       property onUpdate:TProc read fOnUpdate write SetonUpdate;
       property onDraw:TProc read fOnDraw write SetOnDraw;
+      property onFinalize:TProc read fOnFinalize write SetonFinalize;
   end;
+
+  function StrToSDL( s: string ):PAnsiChar;
+//  function SDLtoString( p: PChar ):string;
 
 var
   sdl :Tsdl;
 
 implementation
 
+function StrToSDL( s: string ):PAnsiChar;
+begin
+  Result := PAnsiChar(AnsiString(s));
+end;
 
 
 { Tsdl }
@@ -180,7 +194,10 @@ begin
   begin
     window.w :=640;
     window.h :=480;
-    subsystems := SDL_INIT_VIDEO or SDL_INIT_AUDIO or SDL_INIT_TIMER or SDL_INIT_EVENTS
+    window.flags := SDL_WINDOW_OPENGL;
+    subsystems := SDL_INIT_VIDEO or SDL_INIT_AUDIO or SDL_INIT_TIMER or SDL_INIT_EVENTS ;
+    RenderDriverIndex := -1;
+    RenderFlags := 0;
   end;
   fTitleFPS := true;
   fFrameCounter := 0;
@@ -201,6 +218,8 @@ procedure Tsdl.finalizeAll;
 var
   i:integer;
 begin
+  if Assigned(fOnFinalize)  then fOnFinalize();
+
   for i:=0 to fTextures.Count-1 do
   begin
     SDL_DestroyTexture( fTextures.Items[i] );
@@ -213,14 +232,14 @@ end;
 
 procedure Tsdl.Start;
 var
-  winflags :UInt32;
   rendInfo :TSDL_RendererInfo;
 begin
   //initializaitons
   fStarted := true;
-  //fAppExeName := ParamStr(0);
-  //fBasePath := ExtractFilePath(fAppExeName);
-  fBasePath := string(PAnsiChar(SDL_GetBasePath));
+  //fBasePath := string(PAnsiChar(SDL_GetBasePath));
+  fBasePath := string( SDL_GetBasePath );
+  fPrefPath := string( SDL_GetPrefPath(StrToSdl('denysapp'), StrToSdl('sdlapp')) );
+  if fPrefPath='' then ;
 
   if SDL_Init(cfg.subsystems) < 0 then
   begin
@@ -228,11 +247,11 @@ begin
     exit;
   end else
   begin
-    winflags := 0;
+
     fWinTitle := 'SDL App';
-    fWindow := SDL_CreateWindow(PAnsichar(AnsiString(fWinTitle)), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, winflags );
+    fWindow := SDL_CreateWindow(StrToSdl(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, cfg.window.flags );
     if fWindow = nil then errorFatal;
-    fRend := SDL_CreateRenderer(fWindow,-1, 0);
+    fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
     if fRend = nil then errorFatal;
     SDL_GetRendererInfo(fRend,@rendInfo);
     Debug('Renderer: '+ string(rendInfo.name));
@@ -270,6 +289,11 @@ end;
 procedure Tsdl.SetOnDraw(AValue: TProc);
 begin
   if Assigned(AValue) then fOnDraw:=AValue;
+end;
+
+procedure Tsdl.SetonFinalize(const Value: TProc);
+begin
+  if Assigned(Value) then fOnFinalize := Value;
 end;
 
 procedure Tsdl.SetonLoad(AValue: TProc);
