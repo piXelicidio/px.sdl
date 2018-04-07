@@ -26,7 +26,14 @@ type
   TProc = reference to procedure;
   //  TProc = procedure of object;
 
-
+  PSprite = ^TSprite;
+  TSprite = record
+    srcTex      :PSDL_Texture;
+    srcRectPtr  :PSDL_Rect;  //can be nil to take entire texture, or point to the next field:
+    srcRect     :TSDL_Rect;  // the actual rect that srcRectPtr should point to
+    dstRect     :TSDL_Rect;  //position and dimentions to draw;
+    center      :TSDL_Point;  //pivot point
+  end;
 
 
 type
@@ -75,9 +82,14 @@ type
     public //drawing
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );inline;
       procedure drawRect( x, y, w, h :SInt32 );inline;
-    public //load
+      procedure drawSprite(var sprite :TSprite; ax, ay :integer  );overload;//inline;
+      procedure drawSprite(var sprite :TSprite; ax, ay :integer; angle :single);overload;//inline;
+    public //utils
       function loadTexture( filename: string  ):PSDL_Texture;overload;
       function loadTexture( filename: string; out w,h:LongInt ):PSDL_Texture;overload;
+      function newSprite( srcTex :PSDL_Texture; srcRectPtr:PSDL_Rect = nil):TSprite;overload;
+      function newSprite( srcTex :PSDL_Texture; x, y, w, h :SInt32 ):TSprite;overload;
+      function Rect( ax, ay, aw, ah :integer ):TSDL_Rect;
     public
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
       procedure Start;  {***}
@@ -326,6 +338,28 @@ begin
   SDL_RenderDrawRect(fRend, @fTempRect);
 end;
 
+procedure Tsdl.drawSprite(var sprite: TSprite; ax, ay: integer; angle: single);
+begin
+  with sprite do
+  begin
+    //TODO use the pivot here
+    dstRect.x := ax - center.x;
+    dstRect.y := ay - center.y;
+    SDL_RenderCopyEx(fRend, srcTex, srcRectPtr, @dstRect, angle, @sprite.center, SDL_FLIP_NONE );
+  end;
+end;
+
+procedure Tsdl.drawSprite(var sprite:TSprite; ax, ay: integer );
+begin
+  sprite := Default(TSprite);
+  with sprite do
+  begin
+    dstRect.x := ax - center.x;;
+    dstRect.y := ay - center.x;;
+    SDL_RenderCopy(fRend, srcTex, srcRectPtr, @dstRect);
+  end;
+end;
+
 function Tsdl.loadTexture(filename: string): PSDL_Texture;
 begin
   //TODO: Check if the texture is already loaded, reuse pointer.
@@ -346,7 +380,43 @@ begin
   end;
 end;
 
+function Tsdl.newSprite(srcTex: PSDL_Texture; x, y, w, h: SInt32): TSprite;
+var
+  r :TSDL_Rect;
+begin
+  r := Rect(x,y,w,h);
+  result := newSprite(srcTex, @r);
+end;
 
+function Tsdl.newSprite(srcTex: PSDL_Texture; srcRectPtr: PSDL_Rect): TSprite;
+begin
+  result := Default(TSprite);
+  result.srcTex := srcTex;
+  if srcRectPtr = nil then
+  begin
+    //get the whole texture we need the dimensions
+    SDL_QueryTexture(srcTex, nil, nil, @result.dstRect.w, @result.dstRect.h);
+    result.srcRect.w := result.dstRect.w;
+    result.srcRect.h := result.dstRect.h;
+  end else
+  begin
+    result.srcRect := srcRectPtr^;
+    result.srcRectPtr := @result.srcRect
+  end;
+  result.center.x := result.dstRect.w div 2;
+  result.center.y := result.dstRect.h div 2;
+end;
+
+function Tsdl.Rect(ax, ay, aw, ah: integer): TSDL_Rect;
+begin
+  with result do
+  begin
+    x := ax;
+    y := ay;
+    w := aw;
+    h := ah;
+  end;
+end;
 
 initialization
   sdl := Tsdl.create;
