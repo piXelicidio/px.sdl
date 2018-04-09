@@ -223,7 +223,7 @@ end;
 
 destructor Tsdl.destroy;
 begin
-  finalizeAll;
+
 end;
 
 procedure Tsdl.finalizeAll;
@@ -273,6 +273,8 @@ begin
   fOnLoad;
   //run applicaiton
   fMainLoop;
+  //finalize app
+  finalizeAll;
 end;
 
 procedure Tsdl.errorFatal;
@@ -285,12 +287,16 @@ end;
 
 procedure Tsdl.errorMsg(s:string);
 begin
-  writeln('Error: '+ s);
+  debug('Error: '+ s);
 end;
 
 procedure Tsdl.debug(s: string);
 begin
-  writeln(s);
+  {$IFDEF DEBUG}
+    {$IFDEF CONSOLE}
+    writeln(s);
+    {$ENDIF}
+  {$ENDIF}
 end;
 
 procedure Tsdl.SetMainLoop(aMainLoop: TProc);
@@ -345,18 +351,26 @@ begin
     //TODO use the pivot here
     dstRect.x := ax - center.x;
     dstRect.y := ay - center.y;
-    SDL_RenderCopyEx(fRend, srcTex, srcRectPtr, @dstRect, angle, @sprite.center, SDL_FLIP_NONE );
+    {$IFDEF DEBUG}
+    if SDL_RenderCopyEx(fRend, srcTex, srcRectPtr, @dstRect, angle, @sprite.center, SDL_FLIP_NONE )<>0
+     then ErrorMsg(string(SDL_GetError));
+    {$ELSE}
+    SDL_RenderCopyEx(fRend, srcTex, srcRectPtr, @dstRect, angle, @sprite.center, SDL_FLIP_NONE )
+    {$ENDIF}
   end;
 end;
 
 procedure Tsdl.drawSprite(var sprite:TSprite; ax, ay: integer );
 begin
-  sprite := Default(TSprite);
   with sprite do
   begin
     dstRect.x := ax - center.x;;
     dstRect.y := ay - center.x;;
+    {$IFDEF DEBUG}
+    if SDL_RenderCopy(fRend, srcTex, srcRectPtr, @dstRect)<>0 then ErrorMsg(string(SDL_GetError));
+    {$ELSE}
     SDL_RenderCopy(fRend, srcTex, srcRectPtr, @dstRect);
+    {$ENDIF}
   end;
 end;
 
@@ -403,8 +417,8 @@ begin
     result.srcRect := srcRectPtr^;
     result.srcRectPtr := @result.srcRect
   end;
-  result.center.x := result.dstRect.w div 2;
-  result.center.y := result.dstRect.h div 2;
+  //result.center.x := result.dstRect.w div 2;
+  //result.center.y := result.dstRect.h div 2;
 end;
 
 function Tsdl.Rect(ax, ay, aw, ah: integer): TSDL_Rect;
