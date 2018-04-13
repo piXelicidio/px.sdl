@@ -10,6 +10,7 @@ type
 
   TSdlConfig = record
     window : record
+      title :string;
       w  :SInt32 ;
       h  :SInt32 ;
       flags :UInt32;
@@ -57,7 +58,7 @@ type
     type
       //TODO: textures in StringList? and check to no reload same texturet twice?
       TTextureList = TList<PSDL_Texture>;
-      TFontList = TList<PTTF_Font>;
+      TFontList = TList<PBitmapFont>;
     private
       fStarted :boolean;
       fBasePath :string;
@@ -71,7 +72,8 @@ type
       fPixelWidth, fPixelHeight :LongInt;
       fTextures : TTextureList;
       fFonts    : TFontList;
-      fDefaultFont  :PTTF_Font;
+      fFont     : PBitmapFont;
+      fDefaultFont  :PBitmapFont;
 
       fMainLoop :TProc;
       fFrameCounter :Uint32;
@@ -85,7 +87,6 @@ type
       fTempRect :TSDL_Rect;
       fDemoX, fDemoY : LongInt;
       fDemoIncX, fDemoIncY : LongInt;
-      fFont: TBitmapFont;
 
       procedure appMainLoop;
       procedure defaultDraw;
@@ -97,7 +98,10 @@ type
       procedure SetonUpdate(AValue: TProc);
       procedure updateRenderSize;
       procedure SetonFinalize(const Value: TProc);
-      procedure SetFont(const Value: TBitmapFont);
+      procedure SetFont(const Value: PBitmapFont);
+      function OpenFont( fileName:string; psize:integer ):PTTF_Font;
+      function GetDefaultFont: PBitmapFont;
+      function GetFFont: PBitmapFont;
 
     public  //graphics
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );inline;
@@ -112,12 +116,13 @@ type
       function Rect( ax, ay, aw, ah :integer ):TSDL_Rect;
 
     public //fonts
-      function createBitmapFont( ttf_FileName:string; fontSize :integer ):TBitmapFont;
+      function createBitmapFont( ttf_FileName:string; fontSize :integer ):PBitmapFont;
       function drawText(s:string; x, y :integer; color :cardinal = $ffffff; alpha :byte = 255 ):TSDL_Rect;
-      property Font:TBitmapFont read FFont write SetFont;
-      property DefaultFont:PTTF_Font read fDefaultFont;
+      property Font:PBitmapFont read GetFFont write SetFont;
+      property DefaultFont:PBitmapFont read GetDefaultFont;
     public //misc utils
       procedure convertGrayscaleToAlpha( surf :PSDL_Surface );
+      function toAnsi( s :string ):PAnsiChar;
     public  //application
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
       procedure Start;  {***}
@@ -143,19 +148,10 @@ type
       property onFinalize:TProc read fOnFinalize write SetonFinalize;
   end;
 
-  function StrToSDL( s: string ):PAnsiChar;
-//  function SDLtoString( p: PChar ):string;
-
 var
   sdl :Tsdl;
 
 implementation
-
-function StrToSDL( s: string ):PAnsiChar;
-begin
-  Result := PAnsiChar(AnsiString(s));
-end;
-
 
 { Tsdl }
 
@@ -274,9 +270,12 @@ end;
   Creates a bitmap font on the fly from a loaded TTF font file.
   Rasterize all the ASCII characters to a texture,
   for faster text drawing later.
+
+  Returned PBitmapFont will be automatically diposed at the end of the application, you don't need to worry
+
 }
 function Tsdl.createBitmapFont(ttf_FileName: string;
-  fontSize: integer): TBitmapFont;
+  fontSize: integer): PBitmapFont;
 var
   w  :integer;
   charWidth :array[0..255] of integer;
@@ -288,18 +287,21 @@ var
   destRect :TSDL_Rect;
   sdlFont :PTTF_Font;
 begin
+  new(Result);
+  fFonts.Add(Result);
   Result.maxW := 0;
-  sdlFont := TTF_OpenFont(StrToSdl( ttf_FileName ), fontSize );
+  sdlFont := OpenFont( ttf_FileName , fontSize );
   if sdlFont = nil then
   begin
     errorMsg('Can''t open font '+ttf_FileName + ' ' + string( TTF_GetError ) );
     exit;
   end;
   Result.srcFont := sdlFont;
+  //fFonts.Add( sdlFont );
   for c := 0 to 255 do
   begin
     //storing char widths and finding the max width
-    TTF_SizeText(sdlFont, strToSDL(string(char(c))), @w, nil);
+    TTF_SizeText(sdlFont, toAnsi(string(char(c))), @w, nil);
     if w > Result.maxW then Result.maxW := w;
     charWidth[c] := w;
   end;
@@ -320,7 +322,7 @@ begin
         if c > 0 then
         begin
           //Rendering a single character to a temporary Surface
-          surfChar := TTF_RenderText_Blended(sdlFont, strToSDL(string(char(c))), color );
+          surfChar := TTF_RenderText_Blended(sdlFont, toAnsi(string(char(c))), color );
           destRect := sdl.Rect(i*Result.maxW, j*Result.maxH, charWidth[c], Result.maxH);
           Result.asciiSprites[c] := destRect;
           //bliting the character to our big surface matrix
@@ -335,6 +337,7 @@ begin
   //convert to texture;
   Result.srcTex := SDL_CreateTextureFromSurface(sdl.rend, surf);
   SDL_FreeSurface(surf);
+  TTF_CloseFont(sdlFont);
 end;
 
 destructor Tsdl.destroy;
@@ -355,7 +358,7 @@ begin
   fTextures.Free;
   for i:=0 to fFonts.Count-1 do
   begin
-    TTF_CloseFont(fFonts.Items[i] );
+    if assigned(fFonts.Items[i] ) then  dispose(fFonts.Items[i] );
   end;
   fFonts.Free;
   SDL_DestroyRenderer(fRend);
@@ -366,6 +369,16 @@ begin
   SDL_Quit;
 end;
 
+function Tsdl.GetDefaultFont: PBitmapFont;
+begin
+  result := @fDefaultFont;
+end;
+
+function Tsdl.GetFFont: PBitmapFont;
+begin
+  Result := @fFont;
+end;
+
 procedure Tsdl.Start;
 var
   rendInfo :TSDL_RendererInfo;
@@ -374,7 +387,7 @@ begin
   fStarted := true;
   //fBasePath := string(PAnsiChar(SDL_GetBasePath));
   if cfg.basePath='' then  fBasePath := string( SDL_GetBasePath ) else fBasePath := cfg.basePath;
-  fPrefPath := string( SDL_GetPrefPath(StrToSdl(cfg.savePath_org), StrToSdl(cfg.savePath_app)) );
+  fPrefPath := string( SDL_GetPrefPath(toAnsi(cfg.savePath_org), toAnsi(cfg.savePath_app)) );
   if fPrefPath='' then ;
 
   if SDL_Init(cfg.subsystems) < 0 then
@@ -389,14 +402,15 @@ begin
     if TTF_Init()<>0 then
         errorMsg('Failed font support: ' + string( TTF_GetError() ) );
 
-    fDefaultFont := TTF_OpenFont(StrToSDL(fBasePath + cfg.defaultFont), cfg.defaultFontSize );
-    if fDefaultFont = nil then
+    fDefaultFont := createBitmapFont(cfg.defaultFont, cfg.defaultFontSize);
+    if fDefaultFont.srcFont = nil then
     begin
       errorMsg('TTF_OpenFont : ' + string(TTF_GetError()) );
-    end else fFonts.Add( fDefaultFont );
+    end;
+    fFont := fDefaultFont;
 
-    fWinTitle := 'SDL App';
-    fWindow := SDL_CreateWindow(StrToSdl(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, cfg.window.flags );
+    fWinTitle := cfg.window.title;
+    fWindow := SDL_CreateWindow(toAnsi(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, cfg.window.flags );
     if fWindow = nil then errorFatal;
     fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
     if fRend = nil then errorFatal;
@@ -410,6 +424,12 @@ begin
   fMainLoop;
   //finalize app
   finalizeAll;
+end;
+
+//typecast convert... a Delphi String to PAnsiChar expected by every SDL function
+function Tsdl.toAnsi(s: string): PAnsiChar;
+begin
+  Result := PAnsiChar(AnsiString(s));
 end;
 
 procedure Tsdl.errorFatal;
@@ -434,7 +454,7 @@ begin
   {$ENDIF}
 end;
 
-procedure Tsdl.SetFont(const Value: TBitmapFont);
+procedure Tsdl.SetFont(const Value: PBitmapFont);
 begin
   FFont := Value;
 end;
@@ -578,6 +598,23 @@ end;
 
 
 
+function Tsdl.OpenFont(fileName: string; psize: integer): PTTF_Font;
+var
+  newpath :string;
+begin
+  result := TTF_OpenFont(toAnsi(fBasePath + fileName), psize);
+  if result = nil then
+  begin
+    newpath := GetEnvironmentVariable('WINDIR');
+    result := TTF_OpenFont(toAnsi(newpath +'\fonts\'+fileName), psize);
+    if result=nil then
+    begin
+      //lets try just Arial, then
+      result := TTF_OpenFont(toAnsi(newpath +'\fonts\arial.ttf'), psize);
+    end;
+  end;
+end;
+
 function Tsdl.newSprite(srcTex: PSDL_Texture; srcRectPtr: PSDL_Rect): TSprite;
 begin
   result := Default(TSprite);
@@ -613,6 +650,7 @@ initialization
   sdl := Tsdl.create;
   with sdl.cfg do
   begin
+    window.title := 'SDL2-Delphi Application';
     window.w :=640;
     window.h :=480;
     window.flags := SDL_WINDOW_OPENGL;
