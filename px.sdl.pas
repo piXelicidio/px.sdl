@@ -31,6 +31,14 @@ type
    // using reference to procedure callbacks can be annonymos functions,
    // regular procedures or procedure of object, as I unduerstand :)_
   TProc = reference to procedure;
+  TEventKeypress = reference to procedure(const keyEvent :TSDL_KeyboardEvent);
+  TEventMouseMove = reference to procedure(const motion : TSDL_MouseMotionEvent );
+  TEventMouseButton = reference to procedure(const button : TSDL_MouseButtonEvent );
+  TEventMouseWheel = reference to procedure(const wheel : TSDL_MouseWheelEvent );
+  TEventUserQuit  = reference to procedure(var isOkToQuit:boolean );
+  TEventSDL = reference to procedure(const event :TSDL_Event);
+
+
   //  TProc = procedure of object;
 
   PSprite = ^TSprite;
@@ -83,12 +91,23 @@ type
       fOnUpdate :TProc;
       fOnFinalize: TProc;
       fEvent  :TSDL_Event;
+      fOnOtherEvents :TEventSDL;
+
+      fOnKeyDown :TEventKeypress; //input
+      fOnKeyUp   :TEventKeypress;
+      fOnMouseMove :TEventMouseMove;
+      fOnMouseDown :TEventMouseButton;
+      fOnMouseUp   :TEventMouseButton;
+      fOnMouseWheel :TEventMouseWheel;
+      fOnUserQuit :TEventUserQuit;
+
 
       fTempRect :TSDL_Rect;
       fDemoX, fDemoY : LongInt;
       fDemoIncX, fDemoIncY : LongInt;
 
-      procedure appMainLoop;
+      procedure appMainLoop { <---- MAIN LOOP };
+
       procedure defaultDraw;
       procedure defaultLoad;
       procedure defaultUpdate;
@@ -120,16 +139,28 @@ type
       function drawText(s:string; x, y :integer; color :cardinal = $ffffff; alpha :byte = 255 ):TSDL_Rect;
       property Font:PBitmapFont read GetFFont write SetFont;
       property DefaultFont:PBitmapFont read GetDefaultFont;
+
     public //misc utils
       procedure convertGrayscaleToAlpha( surf :PSDL_Surface );
       function toAnsi( s :string ):PAnsiChar;
+
+    public //input
+      property onKeyDown:TEventKeypress read fOnKeyDown write fOnKeyDown;
+      property onKeyUp:TEventKeypress read fOnKeyUp write fOnKeyUp;
+      property OnMouseMove:TEventMouseMove read fOnMouseMove write fOnMouseMove;
+      property OnMouseDown :TEventMouseButton read fOnMouseDown write fOnMouseDown;
+      property OnMouseUp   :TEventMouseButton read fOnMouseUp   write fOnMouseUp  ;
+      property OnMouseWheel :TEventMouseWheel read fOnMouseWheel write fOnMouseWheel;
+      property OnUserQuit :TEventUserQuit read fOnUserQuit write fOnUserQuit;
+      property OnOtherEvents:TEventSDL read fOnOtherEvents write fOnOtherEvents;
+
     public  //application
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
-      procedure Start;  {***}
+      procedure  Start;  { <----- START }
       procedure finalizeAll;
       procedure errorFatal;
       procedure errorMsg( s:string );
-      procedure debug( s:string );
+      procedure print( s:string );
 
       constructor create;
       destructor Destroy;override;
@@ -173,17 +204,20 @@ begin
     while SDL_PollEvent(@fEvent) = 1 do
     begin
       case fEvent.type_ of
-        SDL_KEYDOWN:;
-        SDL_KEYUP:;
-        SDL_TEXTINPUT:;
-        SDL_MOUSEMOTION:;
-        SDL_MOUSEBUTTONDOWN:;
-        SDL_MOUSEBUTTONUP:;
-        SDL_MOUSEWHEEL:;
-        SDL_WINDOWEVENT:;
-        SDL_QUITEV : exitLoop:=true;
+        SDL_KEYDOWN:  if assigned(fOnKeyDown) then fOnKeyDown(fEvent.key);
+        SDL_KEYUP: if assigned(fOnKeyUp) then fOnKeyUp(fEvent.key);
+        SDL_MOUSEMOTION: if assigned(fOnMouseMove) then fOnMouseMove(fEvent.motion);
+        SDL_MOUSEBUTTONDOWN: if assigned(fOnMouseDown) then fOnMouseDown(fEvent.button);
+        SDL_MOUSEBUTTONUP: if assigned(fOnMouseUp) then fOnMouseUp(fEvent.button);
+        SDL_MOUSEWHEEL: if assigned(fOnMouseWheel) then fOnMouseWheel(fEvent.wheel);
+        SDL_QUITEV :begin
+                      exitLoop := true;
+                      if Assigned(fOnUserQuit) then fOnUserQuit(exitLoop );
+                    end
+
       else
-        //TODO: ProcessAdditionalEvents(fEvent):
+        //Process Additional Events;
+        if assigned(fOnOtherEvents) then fOnOtherEvents(fEvent);
       end
     end;
     //update
@@ -399,8 +433,19 @@ begin
     if IMG_Init(cfg.imgFlags) <> cfg.imgFlags then
         errorMsg('Failed to init image format support');
 
+    fWinTitle := cfg.window.title;
+    fWindow := SDL_CreateWindow(toAnsi(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, cfg.window.flags );
+    if fWindow = nil then errorFatal;
+    fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
+    if fRend = nil then errorFatal;
+    SDL_GetRendererInfo(fRend,@rendInfo);
+    print('Renderer: '+ string(rendInfo.name));
+    updateRenderSize;
+
+
+    //font
     if TTF_Init()<>0 then
-        errorMsg('Failed font support: ' + string( TTF_GetError() ) );
+    errorMsg('Failed font support: ' + string( TTF_GetError() ) );
 
     fDefaultFont := createBitmapFont(cfg.defaultFont, cfg.defaultFontSize);
     if fDefaultFont.srcFont = nil then
@@ -409,14 +454,6 @@ begin
     end;
     fFont := fDefaultFont;
 
-    fWinTitle := cfg.window.title;
-    fWindow := SDL_CreateWindow(toAnsi(fWinTitle), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, cfg.window.w, cfg.window.h, cfg.window.flags );
-    if fWindow = nil then errorFatal;
-    fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
-    if fRend = nil then errorFatal;
-    SDL_GetRendererInfo(fRend,@rendInfo);
-    Debug('Renderer: '+ string(rendInfo.name));
-    updateRenderSize;
   end;
   //Load
   fOnLoad;
@@ -435,17 +472,17 @@ end;
 procedure Tsdl.errorFatal;
 begin
   finalizeAll;
-  debug('ERROR: '+ string(SDL_GetError) );
+  print('ERROR: '+ string(SDL_GetError) );
   SDL_Delay(2000);
   Halt;
 end;
 
 procedure Tsdl.errorMsg(s:string);
 begin
-  debug('Error: '+ s);
+  print('Error: '+ s);
 end;
 
-procedure Tsdl.debug(s: string);
+procedure Tsdl.print(s: string);
 begin
   {$IFDEF DEBUG}
     {$IFDEF CONSOLE}
@@ -659,7 +696,7 @@ initialization
     RenderFlags := 0;
     imgFlags := IMG_INIT_PNG;
     defaultFont := 'vera.ttf';
-    defaultFontSize := 24;
+    defaultFontSize := 12;
     basePath := '';
     savePath_org := 'myCompany';
     savePath_app := 'myApp';
