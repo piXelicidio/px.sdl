@@ -62,6 +62,7 @@ type
 
 type
 
+
   Tsdl = class
     type
       //TODO: textures in StringList? and check to no reload same texturet twice?
@@ -123,7 +124,8 @@ type
       function GetFFont: PBitmapFont;
 
     public  //graphics
-      procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );inline;
+      procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );overload;inline;
+      procedure setColor(const sdlColor :TSDL_Color );overload;inline;
       procedure drawRect( x, y, w, h :SInt32; fill:boolean = false );inline;
       procedure drawSprite(var sprite :TSprite; ax, ay :integer  );overload;//inline;
       procedure drawSprite(var sprite :TSprite; ax, ay :integer; angle :single);overload;//inline;
@@ -132,7 +134,6 @@ type
       function newSprite( srcTex :PSDL_Texture; srcRectPtr:PSDL_Rect = nil):TSprite;overload;
       function newSprite( srcTex :PSDL_Texture; x, y, w, h :SInt32 ):TSprite;overload;
       procedure setCenterToMiddle(var aSprite:TSprite);
-      function Rect( ax, ay, aw, ah :integer ):TSDL_Rect;
 
     public //fonts
       function createBitmapFont( ttf_FileName:string; fontSize :integer ):PBitmapFont;
@@ -143,6 +144,8 @@ type
     public //misc utils
       procedure convertGrayscaleToAlpha( surf :PSDL_Surface );
       function toAnsi( s :string ):PAnsiChar;
+      function rect( ax, ay, aw, ah :integer ):TSDL_Rect;
+      function color( r, g, b :byte; a: byte = 255 ):TSDL_Color;
 
     public //input
       property onKeyDown:TEventKeypress read fOnKeyDown write fOnKeyDown;
@@ -263,6 +266,14 @@ begin
   if fDemoX < 0 then fDemoIncX := 1 else if fDemoX > fPixelWidth-100 then fDemoIncX := -1;
   if fDemoY < 0 then fDemoIncY := 1 else if fDemoY > fPixelHeight-100 then fDemoIncY := -1;
   SDL_Delay(1);
+end;
+
+function Tsdl.color(r, g, b, a: byte ): TSDL_Color;
+begin
+  result.r := r;
+  result.g := g;
+  result.b := b;
+  result.a := a;
 end;
 
 procedure Tsdl.convertGrayscaleToAlpha(surf: PSDL_Surface);
@@ -530,6 +541,11 @@ procedure Tsdl.setCenterToMiddle(var aSprite: TSprite);
 begin
   aSprite.center.x := aSprite.dstRect.w div 2;
   aSprite.center.y := aSprite.dstRect.h div 2;
+end;
+
+procedure Tsdl.setColor(const sdlColor: TSDL_Color);
+begin
+  SDL_SetRenderDrawColor(fRend, sdlColor.r, sdlColor.g, sdlColor.b, sdlColor.a);
 end;
 
 procedure Tsdl.setColor(r, g, b: UInt8; a: UInt8);
