@@ -138,6 +138,7 @@ type
     public //fonts
       function createBitmapFont( ttf_FileName:string; fontSize :integer ):PBitmapFont;
       function drawText(s:string; x, y :integer; color :cardinal = $ffffff; alpha :byte = 255 ):TSDL_Rect;
+      function textSize(s:string):TSDL_Point;  // the width and height;
       property Font:PBitmapFont read GetFFont write SetFont;
       property DefaultFont:PBitmapFont read GetDefaultFont;
 
@@ -530,6 +531,22 @@ end;
 procedure Tsdl.SetonUpdate(AValue: TProc);
 begin
   if Assigned(AValue) then FonUpdate:=AValue;
+end;
+
+function Tsdl.textSize(s: string): TSDL_Point;
+var
+  i :integer;
+  b :byte;
+  srcRect :PSDL_Rect;
+begin
+  Result.x := 0; //width
+  Result.y := fFont.maxH; //height
+  for i:=1 to length(s) do
+  begin
+    b := ord( s[i] );
+    srcRect := @fFont.asciiSprites[b];
+    Result.x := Result.x + srcRect.w;
+  end;
 end;
 
 procedure Tsdl.updateRenderSize;
