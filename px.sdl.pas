@@ -14,6 +14,8 @@ type
       w  :SInt32 ;
       h  :SInt32 ;
       flags :UInt32;
+      fullScreenType :cardinal;
+      fullScreen :boolean;
     end;
     subsystems : UInt32; //  SDL_INIT_... flags
     RenderDriverIndex :SInt32;
@@ -76,6 +78,9 @@ type
       fWindow :PSDL_Window;
       fWinTitle :string;
       fTitleFPS :boolean;
+      fFullScreen :boolean;
+      fFullScreenType :cardinal; // SDL_WINDOW_FULLSCREEN_DESKTOP  or  SDL_WINDOW_FULLSCREEN
+      fLogicalSize :TSDL_Point;
 
       fRend :PSDL_Renderer;
       fPixelWidth, fPixelHeight :LongInt;
@@ -122,6 +127,9 @@ type
       function OpenFont( fileName:string; psize:integer ):PTTF_Font;
       function GetDefaultFont: PBitmapFont;
       function GetFFont: PBitmapFont;
+      function getFullScreen: Boolean;
+      procedure setFullScreen(const Value: Boolean);
+    procedure setLogicalSize(const Value: TSDL_Point);
 
     public  //graphics
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );overload;inline;
@@ -160,7 +168,9 @@ type
 
     public  //application
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
+
       procedure  Start;  { <----- START }
+
       procedure finalizeAll;
       procedure errorFatal;
       procedure errorMsg( s:string );
@@ -170,6 +180,9 @@ type
       destructor Destroy;override;
 
       property window:PSDL_Window read fWindow;
+      property fullScreen:Boolean read getFullScreen write setFullScreen;
+      property fullScreenType:cardinal read fFullScreenType write fFullScreenType;
+      property LogicalSize:TSDL_Point read fLogicalSize write setLogicalSize;
       property pixelWidth:LongInt read fPixelWidth;
       property pixelHeight:LongInt read fPixelHeight;
       property rend:PSDL_Renderer read fRend;
@@ -300,7 +313,6 @@ end;
 
 constructor Tsdl.create;
 begin
-
   fTitleFPS := true;
   fFrameCounter := 0;
   mainLoop:=appMainLoop;
@@ -322,6 +334,8 @@ end;
 }
 function Tsdl.createBitmapFont(ttf_FileName: string;
   fontSize: integer): PBitmapFont;
+const
+  padding = 1;
 var
   w  :integer;
   charWidth :array[0..255] of integer;
@@ -352,8 +366,8 @@ begin
     charWidth[c] := w;
   end;
   Result.maxH := TTF_FontHeight(sdlFont);
-  Result.texW := Result.maxW * 16;
-  Result.texH := Result.maxH * 16;
+  Result.texW := (Result.maxW + padding) * 16;
+  Result.texH := (Result.maxH + padding) * 16;
   //creating the surface to draw the char matrix of 16 x 16
   surf := SDL_CreateRGBSurfaceWithFormat(0, Result.texW, Result.texH, 32, SDL_PIXELFORMAT_RGBA8888);
   SDL_FillRect(surf, nil, $0 );
@@ -369,9 +383,9 @@ begin
         begin
           //Rendering a single character to a temporary Surface
           surfChar := TTF_RenderText_Blended(sdlFont, toAnsi(string(char(c))), color );
-          destRect := sdl.Rect(i*Result.maxW, j*Result.maxH, charWidth[c], Result.maxH);
-          Result.asciiSprites[c] := destRect;
           //bliting the character to our big surface matrix
+          destRect := sdl.Rect(i * (Result.maxW + padding), j * (Result.maxH + padding), charWidth[c], Result.maxH);
+          Result.asciiSprites[c] := destRect;
           SDL_BlitSurface(surfChar, nil, surf,  @destRect  );
           SDL_FreeSurface(surfChar);
         end;
@@ -425,9 +439,15 @@ begin
   Result := @fFont;
 end;
 
+function Tsdl.getFullScreen: Boolean;
+begin
+  Result := fFullScreen;
+end;
+
 procedure Tsdl.Start;
 var
   rendInfo :TSDL_RendererInfo;
+  wh :TSDL_Point;
 begin
   //initializaitons
   fStarted := true;
@@ -450,6 +470,15 @@ begin
     if fWindow = nil then errorFatal;
     fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
     if fRend = nil then errorFatal;
+
+    wh.x := fWindow.w;
+    wh.y := fWindow.h;
+    setLogicalSize(wh);
+
+    fFullScreenType := cfg.window.fullScreenType;
+    setFullScreen( cfg.window.fullScreen );
+
+
     SDL_GetRendererInfo(fRend,@rendInfo);
     print('Renderer: '+ string(rendInfo.name));
     updateRenderSize;
@@ -506,6 +535,21 @@ end;
 procedure Tsdl.SetFont(const Value: PBitmapFont);
 begin
   FFont := Value;
+end;
+
+procedure Tsdl.setFullScreen(const Value: Boolean);
+begin
+  fFullScreen := value;
+  if value  then
+    SDL_SetWindowFullscreen( fWindow, fFullScreenType)
+            else
+    SDL_SetWindowFullscreen( fWindow, 0);
+end;
+
+procedure Tsdl.setLogicalSize(const Value: TSDL_Point);
+begin
+  fLogicalSize := Value;
+  SDL_RenderSetLogicalSize(fRend, value.x, value.y);
 end;
 
 procedure Tsdl.SetMainLoop(aMainLoop: TProc);
@@ -724,6 +768,8 @@ initialization
     window.w :=640;
     window.h :=480;
     window.flags := SDL_WINDOW_OPENGL;
+    window.fullScreenType :=  SDL_WINDOW_FULLSCREEN_DESKTOP;
+    window.fullScreen := false;
     subsystems := SDL_INIT_VIDEO or SDL_INIT_AUDIO or SDL_INIT_TIMER or SDL_INIT_EVENTS ;
     RenderDriverIndex := -1;
     RenderFlags := 0;

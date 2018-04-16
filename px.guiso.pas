@@ -214,13 +214,13 @@ end;
 
 procedure TArea.doMouseEnter;
 begin
-  sdl.print('Entering :'+Text);
+//  sdl.print('Entering :'+Text);
   setState(asHover);
 end;
 
 procedure TArea.doMouseLeave;
 begin
-  sdl.print('Leaving :'+Text);
+//  sdl.print('Leaving :'+Text);
   setState(asNormal);
 end;
 
@@ -327,7 +327,7 @@ end;
 constructor TGuisoScreen.create;
 begin
   inherited;
-  setRect(0,0, sdl.pixelWidth, sdl.pixelHeight);
+  setRect(0,0, sdl.LogicalSize.x, sdl.logicalsize.y);
   fCatchInput := false;
 end;
 
