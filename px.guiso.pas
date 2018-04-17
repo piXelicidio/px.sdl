@@ -59,6 +59,13 @@ TArea = class
     procedure updateScreenCoords;
     procedure setRect(x, y, h, w: integer);
     procedure setState( newState :TAreaState );
+    procedure doMouseDown(const mEvent : TSDL_MouseButtonEvent );virtual;
+    procedure doMouseUp(const mEvent : TSDL_MouseButtonEvent );virtual;
+    procedure doClick(mEvent :TSDL_MouseButtonEvent);virtual; //this one is trigered only if the mouseUp was in the same TArea than mouseDown;
+    procedure doMouseMove(const mEvent : TSDL_MouseMotionEvent );virtual;
+    procedure doMouseEnter;
+    procedure doMouseLeave;
+    function alignedTextPos:TSDL_Point;
   public
     OnMouseMove :TUIEventMouseMove;
     OnMouseDown :TUIEventMouseButton;
@@ -66,28 +73,45 @@ TArea = class
     OnMouseClick  :TUIEventMouseButton;
     papaOwnsMe :boolean;
     Visible :boolean;
+    TextAlignX, TextAlignY :single; //from 0 - 1, 0 is left, 0.5 middle and 1 is right.
+    TextPaddingLeft, TextPaddingRight, TextPaddingTop, TextPaddingBottom :integer;
     Text :string;
     constructor create;
     destructor Destroy;override;
     procedure setXY( x,y :integer );
-    procedure setWH( w,h :integer );
+    procedure setWH( w,h :integer );virtual;
     procedure addChild( newArea : TArea );
     procedure draw;virtual;
 
     function Consume_MouseButton(const mEvent : TSDL_MouseButtonEvent ):boolean;
     function Consume_MouseMove(const mEvent :TSDL_MouseMotionEvent ):boolean;
-    procedure doMouseDown(const mEvent : TSDL_MouseButtonEvent );virtual;
-    procedure doMouseUp(const mEvent : TSDL_MouseButtonEvent );virtual;
-    procedure doClick(mEvent :TSDL_MouseButtonEvent);virtual; //this one is trigered only if the mouseUp was in the same TArea than mouseDown;
-    procedure doMouseMove(const mEvent : TSDL_MouseMotionEvent );virtual;
-    procedure doMouseEnter;
-    procedure doMouseLeave;
+
     property pos : TSDL_Point read fLocal write SetPos;
  end;
+
+TGuisoButton = class(TArea);
 
 TGuisoPanel = class (TArea)
   public
     constructor create;
+end;
+
+TGuisoLabel = class(TArea)
+public
+    constructor create;
+    procedure draw;override;
+end;
+
+TGuisoCheckBox = class(TArea)
+  private
+    procedure setChecked(const Value: boolean);
+protected
+  fChecked :boolean;
+  procedure doClick(mEvent :TSDL_MouseButtonEvent);override;
+public
+  constructor create;
+  procedure draw; override;
+  property Checked :boolean read fChecked write setChecked;
 end;
 
 TGuisoScreen = class( TArea )
@@ -101,12 +125,29 @@ TGuisoScreen = class( TArea )
  var
   styleDefault, stylePanel :TUIStyle;
 
+
 implementation
 
 
 
 { TArea }
 
+
+function TArea.AlignedTextPos: TSDL_Point;
+var
+  x,y, w, h :integer;
+  tz :TSDL_Point;
+begin
+  x := fRect.x + TextPaddingLeft;
+  w := fRect.w - TextPaddingLeft;
+  w := w - TextPaddingRight;
+  y := fRect.y + TextPaddingTop;
+  h := fRect.h - TextPaddingTop;
+  h := h - TextPaddingBottom;
+  tz := sdl.textSize(Text);
+  Result.x := x + round( w * TextAlignX - tz.x * TextAlignX );
+  Result.y := y + round( h * TextAlignY - tz.y * TextAlignY );
+end;
 
 function TArea.Consume_MouseButton(const mEvent: TSDL_MouseButtonEvent): boolean;
 var
@@ -182,6 +223,12 @@ begin
   fStyle := styleDefault;
   setState( asNormal );
   fLastMouseMoveArea := nil;
+  TextAlignX := 0.5;
+  TextAlignY := 0.5;
+  TextPaddingLeft := 2;
+  TextPaddingRight := 2;
+  TextPaddingTop := 2;
+  TextPaddingBottom := 2;
 end;
 
 destructor TArea.Destroy;
@@ -226,16 +273,14 @@ end;
 
 procedure TArea.doMouseUp(const mEvent: TSDL_MouseButtonEvent);
 begin
-  if fLastMouseDownArea = self then doClick(mEvent);
-  
   if assigned(OnMouseUp) then OnMouseUp(self, mEvent);
   setState( asNormal );
+  if fLastMouseDownArea = self then doClick(mEvent);
 end;
 
 procedure TArea.draw;
 var
   i :integer;
-  tsize :TSDL_Point;
   tpos :TSDL_Point;
 begin
   if fVisible  then
@@ -245,9 +290,10 @@ begin
     if Text <>'' then
     begin
       //align center
-      tsize := sdl.textSize(Text);
+      tpos := alignedTextPos;
+      {tsize := sdl.textSize(Text);
       tpos.x := (fRect.x + fRect.w div 2) - (tsize.x div 2);
-      tpos.y := (fRect.y + fRect.h div 2) - (tsize.y div 2);
+      tpos.y := (fRect.y + fRect.h div 2) - (tsize.y div 2);}
       sdl.drawText(Text, tpos.x, tpos.y, cardinal(fCurrFg));
     end;
     //TODO: mabe clip the area of the childs here?
@@ -352,6 +398,76 @@ begin
   fStyle := stylePanel;
   setState(asNormal);
   fShowStates := false;
+end;
+
+{ TGuisoCheckBox }
+
+
+{ TGuisoCheckBox }
+
+constructor TGuisoCheckBox.create;
+begin
+  inherited;
+  TextAlignX := 0.9;
+end;
+
+procedure TGuisoCheckBox.doClick(mEvent: TSDL_MouseButtonEvent);
+begin
+  fChecked := not fChecked;
+  inherited;
+end;
+
+procedure TGuisoCheckBox.draw;
+var
+  checkRect :TSDL_Rect;
+begin
+  inherited;
+  checkRect.x := fRect.x + 5;
+  checkRect.y := fRect.y + 5;
+  checkRect.h := fRect.h - 10;
+  checkRect.w := checkRect.h;
+  if fChecked then
+  begin
+    sdl.setColor( fStyle.activeBk );
+    SDL_RenderFillRect(sdl.rend, @checkRect);
+  end else
+  begin
+    sdl.setColor( fStyle.disabledBk );
+    SDL_RenderFillRect(sdl.rend, @checkRect);
+  end;
+end;
+
+procedure TGuisoCheckBox.setChecked(const Value: boolean);
+begin
+  fChecked := Value;
+end;
+
+{ TGuisoLabel }
+
+constructor TGuisoLabel.create;
+begin
+  inherited;
+  fShowStates := false;
+  fCatchInput := false;
+  setWH(1,1);
+//  TextAlignX := 0;
+//  TextAlignY := 0;
+end;
+
+procedure TGuisoLabel.draw;
+var
+  i :integer;
+  tpos :TSDL_Point;
+begin
+  if fVisible  then
+  begin
+    if Text <>'' then
+    begin
+      tpos := alignedTextPos;
+      sdl.drawText(Text, tpos.x, tpos.y, cardinal(fCurrFg));
+    end;
+    for i := 0 to fChilds.Count - 1 do fChilds.List[i].draw;
+  end;
 end;
 
 initialization
