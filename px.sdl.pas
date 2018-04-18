@@ -245,11 +245,11 @@ begin
     //framerate handling
     inc(fFrameCounter);
     inc(frameStep);
-    if frameStep >= 30 then
+    if frameStep >= 60 then
     begin
       frameStep := 0;
       currTick := SDL_GetTicks;
-      fAveFPS := (1000 * 30) div (currTick - lastTick) ;
+      fAveFPS := (1000 * 60) div (currTick - lastTick) ;
       lastTick := currTick;
       titleFPS := fWinTitle +  ' FPS: ' + IntToStr(fAveFPS);
       if fTitleFPS then SDL_SetWindowTitle( fWindow, PAnsiChar(AnsiString(titleFPS))  );
@@ -767,7 +767,7 @@ initialization
     window.title := 'SDL2-Delphi Application';
     window.w :=640;
     window.h :=480;
-    window.flags := SDL_WINDOW_OPENGL;
+    window.flags := 0;
     window.fullScreenType :=  SDL_WINDOW_FULLSCREEN_DESKTOP;
     window.fullScreen := false;
     subsystems := SDL_INIT_VIDEO or SDL_INIT_AUDIO or SDL_INIT_TIMER or SDL_INIT_EVENTS ;

@@ -11,7 +11,7 @@ unit px.guiso;
 interface
 uses
   system.Generics.collections,
-  system.Classes,
+  system.Classes,  system.SysUtils,
   sdl2,
   px.sdl;
 
@@ -42,6 +42,7 @@ TArea = class
       TListAreas = TList<TArea>;
       TUIEventMouseButton = reference to procedure(sender:TArea; const mEvent:TSDL_MouseButtonEvent );
       TUIEventMouseMove = reference to procedure(sender:TArea;const mEvent:TSDL_MouseMotionEvent );
+      TUIEvent = reference to procedure( sender :TArea );
   private
     fState :TAreaState;
     fPrivateTag :integer;
@@ -60,6 +61,7 @@ TArea = class
     fStyle :TUIStyle;
     fCurrBk : TSDL_Color;
     fCurrFg : TSDL_Color;
+    fTextPos :TSDL_Point;
 
     class var fLastMouseMoveArea :TArea;
     class var fLastMouseDownArea :TArea;
@@ -90,7 +92,7 @@ TArea = class
     procedure setWH( w,h :integer );virtual;
     procedure addChild( newChild : TArea);overload;
     procedure addChild( newChild : TArea; alignX, alignY:single );overload;
-    procedure addChildBellow( newChild, bellowWho :TArea; alignX :single = 0 ); //both has to be childs
+    procedure addChildBellow( newChild, bellowWho :TArea; sameWH:boolean = false; alignX :single = 0 ); //both has to be childs
     procedure draw;virtual;
 
     function Consume_MouseButton(const mEvent : TSDL_MouseButtonEvent ):boolean;
@@ -141,10 +143,29 @@ TGuisoRadioGroup = class(TArea)
     fSelectedItem :TGuisoCheckBox;
     procedure onChildsClick( sender:TArea; const mMouse :TSDL_MouseButtonEvent);
   public
+    OnChange :TArea.TUIEvent;
     constructor create( items:TStrings; itemsW, itemsH :integer );
     destructor Destroy; override;
     property Selected:integer read fSelected write setItemIndex;
     property SelectedText :string read fSelectedText;
+end;
+
+TGuisoSlider = class(TArea)
+  private
+    procedure setValue(const Value: single);
+  protected
+    fValue :single;
+    fMin, fMax :single;
+    fSliderBar, fSlider :TSDL_Rect;
+    procedure doMouseMove(const mEvent : TSDL_MouseMotionEvent );override;
+    procedure UpdateRects;
+  public
+    sliderRectPadd :integer;
+    OnChange :TArea.TUIEvent;
+    constructor create;
+    procedure draw;override;
+    procedure setMinMax( aMin, aMax :single);
+    property Value:single read fValue write setValue;
 end;
 
 TGuisoScreen = class( TArea )
@@ -158,7 +179,7 @@ TGuisoScreen = class( TArea )
  var
   styleDefault, stylePanel :TUIStyle;
 
-
+{------------------------------------------------------------------------------}
 implementation
 
 
@@ -323,7 +344,7 @@ end;
 procedure TArea.doMouseUp(const mEvent: TSDL_MouseButtonEvent);
 begin
   if assigned(OnMouseUp) then OnMouseUp(self, mEvent);
-  setState( asNormal );
+  setState( asHover );
   if fLastMouseDownArea = self then doClick(mEvent);
 end;
 
@@ -359,7 +380,7 @@ begin
   end else sdl.errorMsg('GUI: You cannot add itself or nil as TArea child');
 end;
 
-procedure TArea.addChildBellow(newChild, bellowWho: TArea; alignX: single);
+procedure TArea.addChildBellow(newChild, bellowWho: TArea; sameWH:boolean; alignX: single);
 var
   newPos :TSDL_Point;
 begin
@@ -368,6 +389,7 @@ begin
     fChilds.Add(newChild);
     newChild.fPapaOwnsMe := true;
     newChild.fParent := self;
+    if sameWH then newChild.setWH(bellowWho.width, bellowWho.height);
     newPos.y := bellowWho.pos.y + bellowWho.height + contentPadding;
     newPos.x := bellowWho.pos.x + round(bellowWho.width * alignX - newChild.width * alignX);
     newChild.pos := newPos;
@@ -451,6 +473,7 @@ begin
   for i := 0 to fChilds.Count-1 do fChilds[i].updateScreenCoords;
 end;
 
+
 { TGuisoScreen }
 
 constructor TGuisoScreen.create;
@@ -470,7 +493,8 @@ procedure TGuisoScreen.draw;
 var
   i: Integer;
 begin
-  for i := 0 to fChilds.Count-1 do fChilds.List[i].draw;
+  if fVisible then
+    for i := 0 to fChilds.Count-1 do fChilds.List[i].draw;
 end;
 
 { TGuisoPanel }
@@ -506,19 +530,22 @@ var
   checkRect :TSDL_Rect;
 begin
 //  if fChecked then fCurrFg := fStyle.activeFg;
-  inherited draw;
-  checkRect.x := fRect.x + checkRectPadd;
-  checkRect.y := fRect.y + checkRectPadd;
-  checkRect.h := fRect.h - checkRectPadd * 2;
-  checkRect.w := checkRect.h;
-  if fChecked then
+  if fVisible then
   begin
-    sdl.setColor( fStyle.activeBk );
-    SDL_RenderFillRect(sdl.rend, @checkRect);
-  end else
-  begin
-    sdl.setColor( fStyle.disabledBk );
-    SDL_RenderFillRect(sdl.rend, @checkRect);
+    inherited draw;
+    checkRect.x := fRect.x + checkRectPadd;
+    checkRect.y := fRect.y + checkRectPadd;
+    checkRect.h := fRect.h - checkRectPadd * 2;
+    checkRect.w := checkRect.h;
+    if fChecked then
+    begin
+      sdl.setColor( fStyle.activeBk );
+      SDL_RenderFillRect(sdl.rend, @checkRect);
+    end else
+    begin
+      sdl.setColor( fStyle.disabledBk );
+      SDL_RenderFillRect(sdl.rend, @checkRect);
+    end;
   end;
 end;
 
@@ -600,11 +627,18 @@ end;
 procedure TGuisoRadioGroup.onChildsClick(sender: TArea;
   const mMouse: TSDL_MouseButtonEvent);
 begin
+  if fSelected = sender.fPrivateTag then
+  begin
+    (sender as TGuisoCheckBox).Checked := true;
+    self.doClick(mMouse);
+    exit;
+  end;
   if fSelected<>-1 then fSelectedItem.Checked := false;
   fSelected := sender.fPrivateTag;
   fSelectedItem := sender as TGuisoCheckBox;
   fSelectedText := sender.Text;
   self.doClick(mMouse);
+  if Assigned(OnChange) then OnChange(self);
 end;
 
 procedure TGuisoRadioGroup.setItemIndex(const Value: integer);
@@ -619,13 +653,92 @@ begin
   end;
 end;
 
+{ TGuisoSlider }
+
+constructor TGuisoSlider.create;
+begin
+  inherited create;
+  setMinMax(0,100);
+  setValue(0);
+  TextAlignX := 1;
+  sliderRectPadd := 5;
+  contentPadding := 2;
+  UpdateRects;
+end;
+
+procedure TGuisoSlider.doMouseMove(const mEvent: TSDL_MouseMotionEvent);
+var
+  dv : single;
+begin
+  if (mEvent.state and SDL_BUTTON_LMASK)>0 then
+  begin
+    dv :=  (mEvent.xrel * (fMax - fMin)) / (fRect.w - fRect.h div 2);
+    Value := Value + dv;
+    setState(asActive);
+    UpdateRects;
+    if assigned(OnChange) then OnChange(self);
+  end;
+  inherited;
+end;
+
+procedure TGuisoSlider.draw;
+var
+  i :integer;
+begin
+  if fVisible then
+  begin
+    inherited draw;
+    UpdateRects;
+    sdl.setColor(fStyle.disabledBk);
+    SDL_RenderFillRect(sdl.rend, @fSliderBar);
+    if fState = asActive then sdl.setColor(fStyle.activeFg) else sdl.setColor(fStyle.fg);
+    SDL_RenderFillRect(sdl.rend, @fSlider);
+  end;
+end;
+
+procedure TGuisoSlider.setMinMax(aMin, aMax: single);
+begin
+  fMin := aMin;
+  fMax := aMax;
+  UpdateRects;
+end;
+
+procedure TGuisoSlider.setValue(const Value: single);
+begin
+  fValue := Value;
+  if Value<fMin then fValue := fMin;
+  if Value>fMax then fValue := fMax;
+  UpdateRects;
+end;
+
+procedure TGuisoSlider.UpdateRects;
+var
+  sliderWH :integer;
+  valuePos :integer;
+begin
+    fSliderBar.x := fRect.x + contentPadding;
+    fSliderBar.y := fRect.y + (fRect.h div 2) - contentPadding;
+    fSliderBar.w := fRect.w - 2 * contentPadding;
+    fSliderBar.h := 2* contentPadding;
+    sdl.setColor(fStyle.disabledBk);
+    SDL_RenderFillRect(sdl.rend, @fSliderBar);
+
+    sliderWH := fRect.h - sliderRectPadd*2;
+    valuePos := contentPadding + (sliderWH div 2) + round( (fValue * (fSliderBar.w - sliderWH - contentPadding))/(fMax - fMin));
+    fSlider.x := fRect.x + valuePos - sliderWH div 2;
+    fSlider.y := fRect.y + sliderRectPadd;
+    fSlider.w := sliderWH;
+    fSlider.h := sliderWH;
+end;
+
+
 initialization
   with styleDefault do
   begin
     fg := sdl.color(180,180,180);
     bk := sdl.color(50, 50, 50);
     hoverFg := sdl.color(250, 250, 250);
-    hoverBk := sdl.color(60, 150, 30);
+    hoverBk := sdl.color(30, 100, 20);
     activeFg := sdl.color(255, 255, 255);
     activeBk := sdl.color(220, 120, 5);
     disabledFg := sdl.color(100, 100, 100);
