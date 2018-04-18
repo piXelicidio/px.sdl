@@ -152,6 +152,7 @@ end;
 
 TGuisoSlider = class(TArea)
   private
+    fOnChangeCall :boolean;
     procedure setValue(const Value: single);
   protected
     fValue :single;
@@ -664,6 +665,7 @@ begin
   sliderRectPadd := 5;
   contentPadding := 2;
   UpdateRects;
+  fOnChangeCall := false;
 end;
 
 procedure TGuisoSlider.doMouseMove(const mEvent: TSDL_MouseMotionEvent);
@@ -676,7 +678,9 @@ begin
     Value := Value + dv;
     setState(asActive);
     UpdateRects;
+    fOnChangeCall := true;
     if assigned(OnChange) then OnChange(self);
+    fOnChangeCall := false;
   end;
   inherited;
 end;
@@ -708,7 +712,8 @@ begin
   fValue := Value;
   if Value<fMin then fValue := fMin;
   if Value>fMax then fValue := fMax;
-  UpdateRects;
+  //avoid infinite loop, in case someone change Value from OnChange;
+  if not fOnChangeCall then if assigned(onChange) then OnChange( self );
 end;
 
 procedure TGuisoSlider.UpdateRects;
