@@ -11,6 +11,7 @@ unit px.guiso;
 interface
 uses
   system.Generics.collections,
+  system.Classes,
   sdl2,
   px.sdl;
 
@@ -33,13 +34,20 @@ TAreaState = ( asNormal, asHover, asActive, asDisabled);
 { TArea is like our TControl  }
 //CArea = class of TArea;
 TArea = class
-  type
-    TListAreas = TList<TArea>;
-    TUIEventMouseButton = reference to procedure(sender:TArea; mEvent:TSDL_MouseButtonEvent );
-    TUIEventMouseMove = reference to procedure(sender:TArea; mEvent:TSDL_MouseMotionEvent );
+  public
+    class function Align(const client:TArea; itemW, itemH :integer; alignX :single ; alignY :single  ):TSDL_point;overload; //align to middle with 0.5
+    class procedure Align(const client:TArea; child:TArea; alignX, alignY:single);overload;
+  public
+    type
+      TListAreas = TList<TArea>;
+      TUIEventMouseButton = reference to procedure(sender:TArea; const mEvent:TSDL_MouseButtonEvent );
+      TUIEventMouseMove = reference to procedure(sender:TArea;const mEvent:TSDL_MouseMotionEvent );
   private
     fState :TAreaState;
+    fPrivateTag :integer;
+    fText: string;
     procedure SetPos(const Value: TSDL_Point);
+    procedure setText(const Value: string);
   protected
     fParent :TArea;
     fPapaOwnsMe :boolean;
@@ -74,19 +82,24 @@ TArea = class
     papaOwnsMe :boolean;
     Visible :boolean;
     TextAlignX, TextAlignY :single; //from 0 - 1, 0 is left, 0.5 middle and 1 is right.
-    TextPaddingLeft, TextPaddingRight, TextPaddingTop, TextPaddingBottom :integer;
-    Text :string;
+    contentPadding :integer;
+    Tag :integer;
     constructor create;
     destructor Destroy;override;
     procedure setXY( x,y :integer );
     procedure setWH( w,h :integer );virtual;
-    procedure addChild( newArea : TArea );
+    procedure addChild( newChild : TArea);overload;
+    procedure addChild( newChild : TArea; alignX, alignY:single );overload;
+    procedure addChildBellow( newChild, bellowWho :TArea; alignX :single = 0 ); //both has to be childs
     procedure draw;virtual;
 
     function Consume_MouseButton(const mEvent : TSDL_MouseButtonEvent ):boolean;
     function Consume_MouseMove(const mEvent :TSDL_MouseMotionEvent ):boolean;
 
+    property Text :string read fText write setText;
     property pos : TSDL_Point read fLocal write SetPos;
+    property width:integer read fRect.w;
+    property height:integer read fRect.h;
  end;
 
 TGuisoButton = class(TArea);
@@ -109,9 +122,29 @@ protected
   fChecked :boolean;
   procedure doClick(mEvent :TSDL_MouseButtonEvent);override;
 public
+  checkRectPadd :integer;
   constructor create;
+  procedure setWH( w,h :integer );override;
   procedure draw; override;
   property Checked :boolean read fChecked write setChecked;
+end;
+
+//radio group
+//only OnClick event will work from the user side, other are ignored;
+TGuisoRadioGroup = class(TArea)
+  private
+    procedure setItemIndex(const Value: integer);
+  protected
+    fItems :TStrings;
+    fSelected :integer;
+    fSelectedText :string;
+    fSelectedItem :TGuisoCheckBox;
+    procedure onChildsClick( sender:TArea; const mMouse :TSDL_MouseButtonEvent);
+  public
+    constructor create( items:TStrings; itemsW, itemsH :integer );
+    destructor Destroy; override;
+    property Selected:integer read fSelected write setItemIndex;
+    property SelectedText :string read fSelectedText;
 end;
 
 TGuisoScreen = class( TArea )
@@ -133,21 +166,40 @@ implementation
 { TArea }
 
 
-function TArea.AlignedTextPos: TSDL_Point;
+procedure TArea.addChild(newChild: TArea);
+begin
+  if (newChild<>self) and (newChild<>nil) then
+  begin
+    fChilds.Add(newChild);
+    newChild.fPapaOwnsMe := true;
+    newChild.fParent := self;
+  end else sdl.errorMsg('GUI: You cannot add itself or nil as TArea child');
+end;
+
+class function TArea.Align(const client: TArea; itemW, itemH: integer; alignX,
+  alignY: single): TSDL_point;
 var
   x,y, w, h :integer;
   tz :TSDL_Point;
 begin
-  x := fRect.x + TextPaddingLeft;
-  w := fRect.w - TextPaddingLeft;
-  w := w - TextPaddingRight;
-  y := fRect.y + TextPaddingTop;
-  h := fRect.h - TextPaddingTop;
-  h := h - TextPaddingBottom;
-  tz := sdl.textSize(Text);
-  Result.x := x + round( w * TextAlignX - tz.x * TextAlignX );
-  Result.y := y + round( h * TextAlignY - tz.y * TextAlignY );
+  x := client.fRect.x + client.contentPadding;
+  w := client.fRect.w - client.contentPadding;
+  w := w - client.contentPadding;
+  y := client.fRect.y + client.contentPadding;
+  h := client.fRect.h - client.contentPadding;
+  h := h - client.contentPadding;
+  Result.x := x + round( w * alignX - itemW * alignX );
+  Result.y := y + round( h * alignY - itemH * alignY );
 end;
+
+function TArea.AlignedTextPos: TSDL_Point;
+var
+  ts :TSDL_point;
+begin
+  ts := sdl.textSize(Text);
+  Result := TArea.Align(self, ts.x, ts.y, TextAlignX, TextAlignY );
+end;
+
 
 function TArea.Consume_MouseButton(const mEvent: TSDL_MouseButtonEvent): boolean;
 var
@@ -225,10 +277,7 @@ begin
   fLastMouseMoveArea := nil;
   TextAlignX := 0.5;
   TextAlignY := 0.5;
-  TextPaddingLeft := 2;
-  TextPaddingRight := 2;
-  TextPaddingTop := 2;
-  TextPaddingBottom := 2;
+  contentPadding := 2;
 end;
 
 destructor TArea.Destroy;
@@ -281,34 +330,63 @@ end;
 procedure TArea.draw;
 var
   i :integer;
-  tpos :TSDL_Point;
+  textPos :TSDL_point;
 begin
   if fVisible  then
   begin
     sdl.setColor( fCurrBk );
     SDL_RenderFillRect(sdl.rend, @fRect);
-    if Text <>'' then
+    if Text<>'' then
     begin
-      //align center
-      tpos := alignedTextPos;
-      {tsize := sdl.textSize(Text);
-      tpos.x := (fRect.x + fRect.w div 2) - (tsize.x div 2);
-      tpos.y := (fRect.y + fRect.h div 2) - (tsize.y div 2);}
-      sdl.drawText(Text, tpos.x, tpos.y, cardinal(fCurrFg));
+      textPos := alignedTextPos;
+      sdl.drawText(Text, TextPos.x, TextPos.y, cardinal(fCurrFg));
     end;
     //TODO: mabe clip the area of the childs here?
     for i := 0 to fChilds.Count - 1 do fChilds.List[i].draw;
   end;
 end;
 
-procedure TArea.addChild( newArea: TArea);
+procedure TArea.addChild( newChild : TArea; alignX, alignY:single );
+var
+  newPos :TSDL_Point;
 begin
-  if (newArea<>self) and (newArea<>nil) then
+  if (newChild<>self) and (newChild<>nil) then
   begin
-    fChilds.Add(newArea);
-    newArea.fPapaOwnsMe := true;
-    newArea.fParent := self;
+    fChilds.Add(newChild);
+    newChild.fPapaOwnsMe := true;
+    newChild.fParent := self;
+    TArea.Align(self, newChild, alignX, alignY);
   end else sdl.errorMsg('GUI: You cannot add itself or nil as TArea child');
+end;
+
+procedure TArea.addChildBellow(newChild, bellowWho: TArea; alignX: single);
+var
+  newPos :TSDL_Point;
+begin
+  if (newChild<>self) and (newChild<>nil) then
+  begin
+    fChilds.Add(newChild);
+    newChild.fPapaOwnsMe := true;
+    newChild.fParent := self;
+    newPos.y := bellowWho.pos.y + bellowWho.height + contentPadding;
+    newPos.x := bellowWho.pos.x + round(bellowWho.width * alignX - newChild.width * alignX);
+    newChild.pos := newPos;
+  end else sdl.errorMsg('GUI: You cannot add itself or nil as TArea child');
+end;
+
+class procedure TArea.Align(const client: TArea; child: TArea; alignX, alignY:single);
+var
+  x,y, w, h :integer;
+begin
+  x := client.contentPadding;
+  w := client.fRect.w - client.contentPadding;
+  w := w - client.contentPadding;
+  y := client.contentPadding;
+  h := client.fRect.h - client.contentPadding;
+  h := h - client.contentPadding;
+  x := x + round( w * alignX - child.width * alignX );
+  y := y + round( h * alignY - child.height * alignY );
+  child.setXY(x,y);
 end;
 
 procedure TArea.SetPos(const Value: TSDL_Point);
@@ -332,6 +410,11 @@ begin
       asActive: begin fCurrfg := fStyle.activeFg ; fCurrBk := fStyle.activeBk end;
       asDisabled: begin fCurrfg := fStyle.disabledFg ; fCurrBk := fStyle.disabledBk end;
     end;
+end;
+
+procedure TArea.setText(const Value: string);
+begin
+  fText := Value;
 end;
 
 procedure TArea.setWH(w, h: integer);
@@ -408,12 +491,13 @@ end;
 constructor TGuisoCheckBox.create;
 begin
   inherited;
-  TextAlignX := 0.9;
+  TextAlignX := 0.1;
+  checkRectPadd := 5;
 end;
 
 procedure TGuisoCheckBox.doClick(mEvent: TSDL_MouseButtonEvent);
 begin
-  fChecked := not fChecked;
+  setChecked( not fChecked );
   inherited;
 end;
 
@@ -421,10 +505,11 @@ procedure TGuisoCheckBox.draw;
 var
   checkRect :TSDL_Rect;
 begin
-  inherited;
-  checkRect.x := fRect.x + 5;
-  checkRect.y := fRect.y + 5;
-  checkRect.h := fRect.h - 10;
+//  if fChecked then fCurrFg := fStyle.activeFg;
+  inherited draw;
+  checkRect.x := fRect.x + checkRectPadd;
+  checkRect.y := fRect.y + checkRectPadd;
+  checkRect.h := fRect.h - checkRectPadd * 2;
   checkRect.w := checkRect.h;
   if fChecked then
   begin
@@ -440,6 +525,13 @@ end;
 procedure TGuisoCheckBox.setChecked(const Value: boolean);
 begin
   fChecked := Value;
+  //if fChecked then TextAlignX := 0.9 else TextAlignX := 0.1;
+end;
+
+procedure TGuisoCheckBox.setWH(w, h: integer);
+begin
+  inherited;
+  contentPadding := h;
 end;
 
 { TGuisoLabel }
@@ -470,15 +562,72 @@ begin
   end;
 end;
 
+{ TGuisoRadioGroup }
+
+constructor TGuisoRadioGroup.create;
+var
+  newChild :TGuisoCheckBox;
+  i: Integer;
+begin
+  inherited create;
+  fCatchInput := false;
+  fShowStates := false;
+
+  fItems := items;
+  setWH( itemsW, itemsH * fItems.Count);
+  for i := 0 to fItems.Count-1 do
+  begin
+    newChild := TGuisoCheckBox.create;
+    newChild.setWH(itemsW, itemsH);
+    addChild(newChild);
+    newChild.setXY(0, i * itemsH);
+    fItems.Objects[i] := newChild;
+    newChild.Text := fItems.Strings[i];
+    newChild.OnMouseClick := onChildsClick;
+    newChild.fPrivateTag := i;
+  end;
+  fSelected := -1;
+  fSelectedText := '';
+  fSelectedItem := nil;
+end;
+
+destructor TGuisoRadioGroup.Destroy;
+begin
+  if assigned(fItems) then fItems.Free;
+  inherited;
+end;
+
+procedure TGuisoRadioGroup.onChildsClick(sender: TArea;
+  const mMouse: TSDL_MouseButtonEvent);
+begin
+  if fSelected<>-1 then fSelectedItem.Checked := false;
+  fSelected := sender.fPrivateTag;
+  fSelectedItem := sender as TGuisoCheckBox;
+  fSelectedText := sender.Text;
+  self.doClick(mMouse);
+end;
+
+procedure TGuisoRadioGroup.setItemIndex(const Value: integer);
+begin
+  if (Value>=0) and (Value<fItems.Count) then
+  begin
+    if fSelected<>-1 then fSelectedItem.Checked := false;
+    fSelected := Value;
+    fSelectedText := fItems[Value];
+    fSelectedItem := fItems.Objects[Value] as TGuisoCheckBox;
+    fSelectedItem.Checked := true;
+  end;
+end;
+
 initialization
   with styleDefault do
   begin
-    fg := sdl.color(200,200,200);
-    bk := sdl.color(70, 70, 70);
+    fg := sdl.color(180,180,180);
+    bk := sdl.color(50, 50, 50);
     hoverFg := sdl.color(250, 250, 250);
     hoverBk := sdl.color(60, 150, 30);
     activeFg := sdl.color(255, 255, 255);
-    activeBk := sdl.color(220, 170, 5);
+    activeBk := sdl.color(220, 120, 5);
     disabledFg := sdl.color(100, 100, 100);
     disabledBk := sdl.color(30, 30, 30);
   end;
