@@ -272,7 +272,7 @@ begin
       if Result then break;
     end;
     //if non of my childs consumed the input then I eat it.
-    if (not Result) then
+    if (not Result) and (fCatchInput) then
     begin
       Result := true;
       if fCatchInput then doMouseMove(mEvent);
@@ -283,7 +283,7 @@ begin
         if fCatchInput then doMouseEnter;
       end;
     end;
-  end
+  end;
 end;
 
 constructor TArea.create;
