@@ -111,6 +111,7 @@ type
       fTempRect :TSDL_Rect;
       fDemoX, fDemoY : LongInt;
       fDemoIncX, fDemoIncY : LongInt;
+      fExitMainLoop: Boolean;
 
       procedure appMainLoop { <---- MAIN LOOP };
 
@@ -169,12 +170,14 @@ type
     public  //application
       cfg :TSdlConfig;    //modify values of this record before start, optionally.
 
-      procedure  Start;  { <----- START }
+      procedure Start;  { <----- START }
+      procedure Quit;
 
       procedure finalizeAll;
       procedure errorFatal;
       procedure errorMsg( s:string );
       procedure print( s:string );
+      procedure showDriversInfo;
 
       constructor create;
       destructor Destroy;override;
@@ -190,6 +193,7 @@ type
 
       property MainLoop:TProc read fMainLoop write SetMainLoop;
       property frameCounter:cardinal read fFrameCounter;
+      property FPS:cardinal read fAveFPS;
       property onLoad:TProc read fOnLoad write SetonLoad;
       property onUpdate:TProc read fOnUpdate write SetonUpdate;
       property onDraw:TProc read fOnDraw write SetOnDraw;
@@ -205,17 +209,16 @@ implementation
 
 procedure Tsdl.appMainLoop;
 var
-  exitLoop :boolean;
   lastTick    :Uint32;
   frameStep   :Uint32;
   currTick    :UInt32;
   titleFPS  :string;
 begin
-  exitLoop := false;
+  fExitMainLoop := false;
   lastTick := SDL_GetTicks;
   fFrameCounter := 0;
   frameStep     := 0;
-  while exitLoop = false do
+  while fExitMainLoop = false do
   begin
     //process events
     while SDL_PollEvent(@fEvent) = 1 do
@@ -228,8 +231,8 @@ begin
         SDL_MOUSEBUTTONUP: if assigned(fOnMouseUp) then fOnMouseUp(fEvent.button);
         SDL_MOUSEWHEEL: if assigned(fOnMouseWheel) then fOnMouseWheel(fEvent.wheel);
         SDL_QUITEV :begin
-                      exitLoop := true;
-                      if Assigned(fOnUserQuit) then fOnUserQuit(exitLoop );
+                      fExitMainLoop := true;
+                      if Assigned(fOnUserQuit) then fOnUserQuit(fExitMainLoop );
                     end
 
       else
@@ -470,7 +473,6 @@ begin
     if fWindow = nil then errorFatal;
     fRend := SDL_CreateRenderer(fWindow, cfg.RenderDriverIndex, cfg.RenderFlags);
     if fRend = nil then errorFatal;
-
     wh.x := fWindow.w;
     wh.y := fWindow.h;
     setLogicalSize(wh);
@@ -532,6 +534,11 @@ begin
   {$ENDIF}
 end;
 
+procedure Tsdl.Quit;
+begin
+  fExitMainLoop := True;
+end;
+
 procedure Tsdl.SetFont(const Value: PBitmapFont);
 begin
   FFont := Value;
@@ -575,6 +582,19 @@ end;
 procedure Tsdl.SetonUpdate(AValue: TProc);
 begin
   if Assigned(AValue) then FonUpdate:=AValue;
+end;
+
+procedure Tsdl.showDriversInfo;
+var
+  numDrivers, i :integer;
+  info :TSDL_RendererInfo;
+begin
+  numDrivers := SDL_GetNumRenderDrivers;
+  for i := 0 to numDrivers-1 do
+  begin
+    SDL_GetRenderDriverInfo(i, @info);
+    print( IntToStr(i)+' - '+ string(info.name));
+  end;
 end;
 
 function Tsdl.textSize(s: string): TSDL_Point;

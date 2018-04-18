@@ -102,6 +102,7 @@ TArea = class
     property pos : TSDL_Point read fLocal write SetPos;
     property width:integer read fRect.w;
     property height:integer read fRect.h;
+    property childs:TListAreas read fChilds;
  end;
 
 TGuisoButton = class(TArea);
@@ -591,7 +592,8 @@ begin
 end;
 
 { TGuisoRadioGroup }
-
+{ TGruisoRadioGroup will own the TStrings now, and will free it when destroy is called
+do not modify string list, not yet }
 constructor TGuisoRadioGroup.create;
 var
   newChild :TGuisoCheckBox;
