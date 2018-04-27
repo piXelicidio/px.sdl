@@ -81,6 +81,11 @@ type
       fFullScreen :boolean;
       fFullScreenType :cardinal; // SDL_WINDOW_FULLSCREEN_DESKTOP  or  SDL_WINDOW_FULLSCREEN
       fLogicalSize :TSDL_Point;
+      fFixedFPS :integer;
+      fFixedFrameTime :integer;
+      fShowFrameProfiler :boolean;
+      fDrawProfMax :integer;
+      fUpdateProfMax :integer;
 
       fRend :PSDL_Renderer;
       fPixelWidth, fPixelHeight :LongInt;
@@ -130,7 +135,7 @@ type
       function GetFFont: PBitmapFont;
       function getFullScreen: Boolean;
       procedure setFullScreen(const Value: Boolean);
-    procedure setLogicalSize(const Value: TSDL_Point);
+      procedure setLogicalSize(const Value: TSDL_Point);
 
     public  //graphics
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );overload;inline;
@@ -153,7 +158,8 @@ type
 
     public //misc utils
       procedure convertGrayscaleToAlpha( surf :PSDL_Surface );
-      function toAnsi( s :string ):PAnsiChar;
+      function toAnsi(const s :string ):PAnsiChar;
+      function toString( s :PAnsiChar ):string;
       function rect( ax, ay, aw, ah :integer ):TSDL_Rect;
       function color( r, g, b :byte; a: byte = 255 ):TSDL_Color;
 
@@ -178,6 +184,8 @@ type
       procedure errorMsg( s:string );
       procedure print( s:string );
       procedure showDriversInfo;
+      procedure setFixedFPS( targetFPS :integer ); //0 for unlimited;
+      procedure drawFrameProfiler( updateTime, drawTime:integer);
 
       constructor create;
       destructor Destroy;override;
@@ -190,6 +198,7 @@ type
       property pixelHeight:LongInt read fPixelHeight;
       property rend:PSDL_Renderer read fRend;
       property basePath:string read fBasePath write fBasePath;
+      property ShowFrameProfiler:boolean read fShowFrameProfiler write fShowFrameProfiler;
 
       property MainLoop:TProc read fMainLoop write SetMainLoop;
       property frameCounter:cardinal read fFrameCounter;
@@ -211,15 +220,23 @@ procedure Tsdl.appMainLoop;
 var
   lastTick    :Uint32;
   frameStep   :Uint32;
+  frameInterval :integer;
   currTick    :UInt32;
   titleFPS  :string;
+  frameT_start :UInt32;
+  frameT_afterUpdate :integer;
+  frameT_afterDraw :integer;
+  frameT_totalSpend :integer;
+  frameT_neededDelay :integer;
 begin
   fExitMainLoop := false;
   lastTick := SDL_GetTicks;
   fFrameCounter := 0;
   frameStep     := 0;
+  if fFixedFPS > 0 then frameInterval := fFixedFPS else frameInterval := 100;
   while fExitMainLoop = false do
   begin
+    frameT_start := SDL_GetTicks;
     //process events
     while SDL_PollEvent(@fEvent) = 1 do
     begin
@@ -241,23 +258,42 @@ begin
       end
     end;
     //update
+
     fOnUpdate(); //TODO: calc dt when necessary
+    frameT_afterUpdate := SDL_GetTicks;
     //draw;
     fOnDraw();
+    frameT_afterDraw := SDL_GetTicks;
+
+    //Delay for fixed time;
+    frameT_totalSpend := frameT_afterDraw - frameT_start;
+    frameT_neededDelay := fFixedFrameTime - frameT_totalSpend;
+
+    {$IFDEF DEBUG}
+    if fShowFrameProfiler then drawFrameProfiler( frameT_afterUpdate - frameT_start, frameT_afterDraw - frameT_afterUpdate );
+    {$ENDIF}
+
     SDL_RenderPresent(fRend);
-    //framerate handling
+
+    if frameT_neededDelay > 0 then
+    begin
+      SDL_Delay(frameT_neededDelay);
+    end;
+
+    //FPS calculation handling
     inc(fFrameCounter);
     inc(frameStep);
-    if frameStep >= 60 then
+    if frameStep >= frameInterval then
     begin
       frameStep := 0;
       currTick := SDL_GetTicks;
-      fAveFPS := (1000 * 60) div (currTick - lastTick) ;
+      fAveFPS := (1000 * frameInterval) div (currTick - lastTick) ;
       lastTick := currTick;
-      titleFPS := fWinTitle +  ' FPS: ' + IntToStr(fAveFPS);
-      if fTitleFPS then SDL_SetWindowTitle( fWindow, PAnsiChar(AnsiString(titleFPS))  );
+      {titleFPS := fWinTitle +  ' FPS: ' + IntToStr(fAveFPS);
+      if fTitleFPS then SDL_SetWindowTitle( fWindow, PAnsiChar(AnsiString(titleFPS))  );}
     end;
-    //SDL_Delay(1);
+
+
   end
 end;
 
@@ -325,6 +361,8 @@ begin
 
   fTextures := TTextureList.Create;
   fFonts := TFontList.Create;
+  setFixedFPS(0);
+  fShowFrameProfiler := false;
 end;
 
 {
@@ -343,7 +381,7 @@ var
   w  :integer;
   charWidth :array[0..255] of integer;
   i,j: Integer;
-  c:byte;
+  c:word;   // as word jsut to avoid the integer overflow of the last inc(c) :)
   surf :PSDL_Surface;
   surfChar :PSDL_Surface;
   color :TSDL_Color;
@@ -454,8 +492,8 @@ var
 begin
   //initializaitons
   fStarted := true;
-  //fBasePath := string(PAnsiChar(SDL_GetBasePath));
-  if cfg.basePath='' then  fBasePath := string( SDL_GetBasePath ) else fBasePath := cfg.basePath;
+  //fBasePath := string(PAnsiChar(SDL_GetBasePath));  getcurrentdir
+  if cfg.basePath='' then  fBasePath := toString( SDL_GetBasePath ) else fBasePath := cfg.basePath;
   fPrefPath := string( SDL_GetPrefPath(toAnsi(cfg.savePath_org), toAnsi(cfg.savePath_app)) );
   if fPrefPath='' then ;
 
@@ -507,9 +545,14 @@ begin
 end;
 
 //typecast convert... a Delphi String to PAnsiChar expected by every SDL function
-function Tsdl.toAnsi(s: string): PAnsiChar;
+function Tsdl.toAnsi(const s: string): PAnsiChar;
 begin
   Result := PAnsiChar(AnsiString(s));
+end;
+
+function Tsdl.toString(s: PAnsiChar): string;
+begin
+  result := string( PAnsiChar( SDL_GetBasePath ) )
 end;
 
 procedure Tsdl.errorFatal;
@@ -551,6 +594,7 @@ begin
     SDL_SetWindowFullscreen( fWindow, fFullScreenType)
             else
     SDL_SetWindowFullscreen( fWindow, 0);
+  updateRenderSize;
 end;
 
 procedure Tsdl.setLogicalSize(const Value: TSDL_Point);
@@ -629,11 +673,42 @@ begin
   SDL_SetRenderDrawColor(fRend, sdlColor.r, sdlColor.g, sdlColor.b, sdlColor.a);
 end;
 
+procedure Tsdl.setFixedFPS(targetFPS: integer);
+begin
+  fFixedFPS := targetFPS;
+  if targetFPS > 0 then fFixedFrameTime := 1000 div fFixedFPS else fFixedFrameTime := 0
+end;
+
 procedure Tsdl.setColor(r, g, b: UInt8; a: UInt8);
 begin
   SDL_SetRenderDrawColor(fRend, r, g, b, a);
 end;
 
+
+procedure Tsdl.drawFrameProfiler;
+var
+  xpos, ypos :integer;
+  r   :TSDL_Rect;
+begin
+  xpos := fPixelWidth-200;
+  ypos := 0;
+  if updateTime > fUpdateProfMax then fUpdateProfMax := updatetime else dec(fUpdateProfMax);
+  if drawTime > fDrawProfMax then fDrawProfMax := drawTime else dec(fUpdateProfMax);
+  sdl.drawText('update '+IntToStr(updateTime)+'ms', xpos,ypos, $40ffff);
+  r.x := xpos + 90;  r.y := ypos + 3;
+  r.h := 10;
+  r.w := fUpdateProfMax;
+  sdl.setColor(255,255,$40);
+  SDL_RenderFillRect(sdl.rend, @r);
+  ypos := ypos + 20;
+  sdl.drawText('draw '+IntToStr(drawTime)+'ms', xpos, ypos);
+  r.x := xpos + 90;  r.y := ypos + 3;
+  r.h := 10;
+  r.w := fDrawProfMax;
+  sdl.setColor(255,255,255);
+  SDL_RenderFillRect(sdl.rend, @r);
+
+end;
 
 procedure Tsdl.drawRect(x, y, w, h: SInt32; fill:boolean = false );
 begin
