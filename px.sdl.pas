@@ -118,7 +118,7 @@ type
       fDemoIncX, fDemoIncY : LongInt;
       fExitMainLoop: Boolean;
 
-      procedure appMainLoop { <---- MAIN LOOP };
+      procedure appMainLoop { <---------------------------------- MAIN LOOP };
 
       procedure defaultDraw;
       procedure defaultLoad;
@@ -228,6 +228,7 @@ var
   frameT_afterDraw :integer;
   frameT_totalSpend :integer;
   frameT_neededDelay :integer;
+  frameT_fix  :integer;
 begin
   fExitMainLoop := false;
   lastTick := SDL_GetTicks;
@@ -275,10 +276,19 @@ begin
 
     SDL_RenderPresent(fRend);
 
-    if frameT_neededDelay > 0 then
+    //fixing some high precision error with SDL_Delay
+    if frameT_neededDelay > 5 then SDL_Delay(frameT_neededDelay - 5);
+    //CheckAgain:
+    frameT_fix := SDL_GetTicks;
+    frameT_neededDelay := fFixedFrameTime - (frameT_fix - frameT_start);
+    if frameT_neededDelay>0 then
     begin
-      SDL_Delay(frameT_neededDelay);
+      //dirty precise delay
+      repeat
+        asm nop end;
+      until SDL_GetTicks > (frameT_fix + frameT_neededDelay);
     end;
+
 
     //FPS calculation handling
     inc(fFrameCounter);
@@ -676,7 +686,7 @@ end;
 procedure Tsdl.setFixedFPS(targetFPS: integer);
 begin
   fFixedFPS := targetFPS;
-  if targetFPS > 0 then fFixedFrameTime := 1000 div fFixedFPS else fFixedFrameTime := 0
+  if targetFPS > 0 then fFixedFrameTime := (1000 div fFixedFPS)-1 else fFixedFrameTime := 0
 end;
 
 procedure Tsdl.setColor(r, g, b: UInt8; a: UInt8);
