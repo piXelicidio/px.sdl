@@ -565,6 +565,8 @@ begin
   result := string( PAnsiChar( SDL_GetBasePath ) )
 end;
 
+// free resources, prints the last SDL error message,
+// then after 2 seconds halts the program execution
 procedure Tsdl.errorFatal;
 begin
   finalizeAll;
@@ -573,6 +575,7 @@ begin
   Halt;
 end;
 
+// Prints an error message on console window, keep program running
 procedure Tsdl.errorMsg(s:string);
 begin
   print('Error: '+ s);
