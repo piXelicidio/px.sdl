@@ -55,7 +55,7 @@ type
   PBitmapFont = ^TBitmapFont;
   TBitmapFont = record
     srcTex        :PSDL_Texture;
-    srcFont       :PTTF_Font;
+    srcFontName   :string;
     asciiSprites  :array[0..255] of TSDL_Rect;
     texW, texH :integer;
     maxW, maxH :integer;
@@ -141,7 +141,7 @@ type
       procedure setColor( r, g, b:UInt8; a :UInt8 = 255 );overload;inline;
       procedure setColor(const sdlColor :TSDL_Color );overload;inline;
       procedure drawRect( x, y, w, h :SInt32; fill:boolean = false );inline;
-      procedure drawSprite(var sprite :TSprite; ax, ay :integer  );overload;//inline;
+      procedure drawSprite(var sprite :TSprite; ax, ay :integer  );overload;//inline; //faster without angle
       procedure drawSprite(var sprite :TSprite; ax, ay :integer; angle :single);overload;//inline;
       function loadTexture( filename: string  ):PSDL_Texture;overload;
       function loadTexture( filename: string; out w,h:LongInt ):PSDL_Texture;overload;
@@ -153,7 +153,7 @@ type
       function createBitmapFont( ttf_FileName:string; fontSize :integer ):PBitmapFont;
       function drawText(s:string; x, y :integer; color :cardinal = $ffffff; alpha :byte = 255 ):TSDL_Rect;
       function textSize(s:string):TSDL_Point;  // the width and height;
-      property Font:PBitmapFont read GetFFont write SetFont;
+      property Font:PBitmapFont read fFont write SetFont;
       property DefaultFont:PBitmapFont read GetDefaultFont;
 
     public //misc utils
@@ -407,7 +407,7 @@ begin
     errorMsg('Can''t open font '+ttf_FileName + ' ' + string( TTF_GetError ) );
     exit;
   end;
-  Result.srcFont := sdlFont;
+  //Result.srcFont := sdlFont;
   //fFonts.Add( sdlFont );
   for c := 0 to 255 do
   begin
@@ -535,14 +535,10 @@ begin
 
 
     //font
-    if TTF_Init()<>0 then
-    errorMsg('Failed font support: ' + string( TTF_GetError() ) );
+    if TTF_Init()<>0 then errorMsg('Failed font support: ' + string( TTF_GetError() ) );
 
     fDefaultFont := createBitmapFont(cfg.defaultFont, cfg.defaultFontSize);
-    if fDefaultFont.srcFont = nil then
-    begin
-      errorMsg('TTF_OpenFont : ' + string(TTF_GetError()) );
-    end;
+
     fFont := fDefaultFont;
 
   end;
