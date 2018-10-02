@@ -31,7 +31,7 @@ end;
 
 TAreaState = ( asNormal, asHover, asActive, asDisabled);
 
-{ TArea is like our TControl  }
+///<summary> TArea is like our TControl, the parent class of all controls  </summary>
 //CArea = class of TArea;
 TArea = class
   public
@@ -105,19 +105,23 @@ TArea = class
     property childs:TListAreas read fChilds;
  end;
 
+///<summary> Just a button with onlick event and caption text, nothing new added to TArea </summary>
 TGuisoButton = class(TArea);
 
+///<summary> A panel, a rectangle area that doesn't change its estate </summary>
 TGuisoPanel = class (TArea)
   public
     constructor create;
 end;
 
+///<summary> A Label, text only without background rectangle </summary>
 TGuisoLabel = class(TArea)
 public
     constructor create;
     procedure draw;override;
 end;
 
+///<summary> A checkbox with checked property </summary >
 TGuisoCheckBox = class(TArea)
   private
     procedure setChecked(const Value: boolean);
@@ -132,8 +136,11 @@ public
   property Checked :boolean read fChecked write setChecked;
 end;
 
-//radio group
-//only OnClick event will work from the user side, other are ignored;
+///<summary>
+///Radio group.
+///Only OnClick event will work from the user side, others are ignored.
+/// Selected is the index. SelectedText the name of the item as string.
+///</summary>
 TGuisoRadioGroup = class(TArea)
   private
     procedure setItemIndex(const Value: integer);
@@ -151,6 +158,7 @@ TGuisoRadioGroup = class(TArea)
     property SelectedText :string read fSelectedText;
 end;
 
+///<summary> Slider control, use OnChange event, setMinMax procedure and Value property. </summary>
 TGuisoSlider = class(TArea)
   private
     fOnChangeCall :boolean;
@@ -170,6 +178,13 @@ TGuisoSlider = class(TArea)
     property Value:single read fValue write setValue;
 end;
 
+///<summary> TGuisoScreen is requiered as the parent of all your user interface. Add controls as child.
+///  You can have many TGuisoScreen and switch them. Even use multiple objects at them at the same time.
+/// </summary>
+///  <remarks>
+///  You need to call TGuisoScreen.draw to show the ui. And notify of mouse input with
+///  TGuisoScreen.consume_mouseButton() and TGuisoScrene.consume_mouseMove()
+///  </remarks>
 TGuisoScreen = class( TArea )
   private
   public
@@ -223,7 +238,11 @@ begin
   Result := TArea.Align(self, ts.x, ts.y, TextAlignX, TextAlignY );
 end;
 
-
+{
+  The cool is here on these two cosume_... functions
+  This will check first with the childs to detect if the event is
+  consumed by child TAreas over it.
+}
 function TArea.Consume_MouseButton(const mEvent: TSDL_MouseButtonEvent): boolean;
 var
   i :integer;
@@ -252,6 +271,7 @@ begin
   end
 end;
 
+{ same as before but also notify when leaving a child area and entering a parent }
 function TArea.Consume_MouseMove(const mEvent: TSDL_MouseMotionEvent): boolean;
 var
   i :integer;
