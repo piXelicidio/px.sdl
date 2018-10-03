@@ -55,6 +55,7 @@ type
   PBitmapFont = ^TBitmapFont;
   TBitmapFont = record
     srcTex        :PSDL_Texture;
+    srcSurf       :PSDL_Surface;
     srcFontName   :string;
     asciiSprites  :array[0..255] of TSDL_Rect;
     texW, texH :integer;
@@ -407,6 +408,7 @@ begin
     errorMsg('Can''t open font '+ttf_FileName + ' ' + string( TTF_GetError ) );
     exit;
   end;
+  result.srcFontName := ttf_fileName;
   //Result.srcFont := sdlFont;
   //fFonts.Add( sdlFont );
   for c := 0 to 255 do
@@ -447,7 +449,8 @@ begin
   sdl.ConvertGrayscaleToAlpha( surf );
   //convert to texture;
   Result.srcTex := SDL_CreateTextureFromSurface(sdl.rend, surf);
-  SDL_FreeSurface(surf);
+  //SDL_FreeSurface(surf);  //TODO: do not free the surface: store it for effects
+  Result.srcSurf := surf;
   TTF_CloseFont(sdlFont);
 end;
 
@@ -469,7 +472,12 @@ begin
   fTextures.Free;
   for i:=0 to fFonts.Count-1 do
   begin
-    if assigned(fFonts.Items[i] ) then  dispose(fFonts.Items[i] );
+    if assigned(fFonts.Items[i] ) then
+    begin
+       SDL_DestroyTexture( fFonts.Items[i].srcTex );
+       SDL_FreeSurface(fFonts.Items[i].srcSurf);
+       dispose(fFonts.Items[i] );
+    end;
   end;
   fFonts.Free;
   SDL_DestroyRenderer(fRend);
